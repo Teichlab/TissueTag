@@ -1,19 +1,6 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[1]:
-
-
-# jupyter_annotator 
-
-
-# In[11]:
-
 import numpy as np
-
-
-# In[10]:
-
+from bokeh.models import PolyDrawTool,PolyEditTool,FreehandDrawTool
+from bokeh.plotting import figure, show
 
 def read_hne(
     path
@@ -34,9 +21,6 @@ def read_hne(
     return np.array(im)
 
 
-# In[9]:
-
-
 def scribbler(
     imarray,
     anno_order,
@@ -55,8 +39,7 @@ def scribbler(
             list of colors for the structures in anno_order, must have the same length (list of strings)
 
     """
-    from bokeh.models import PolyDrawTool,PolyEditTool,FreehandDrawTool
-    from bokeh.plotting import figure, show
+
     
     imarray_c = imarray[:,:].copy()
     np_img2d = imarray_c.view("uint32").reshape(imarray_c.shape[:2])
@@ -76,21 +59,6 @@ def scribbler(
     
     return p, render_dict
     
-#     def app(doc):
-#         global p
-#         doc.add_root(p)
-#     return app,p
-
-#     if host=='local':
-#         show(app)
-#     else:
-#         print(f'{socket.gethostname()}:'+host)
-#         show(app,notebook_url=f'{socket.gethostname()}:'+host)
-
-
-# In[12]:
-
-
 def complete_pixel_gaps(x,y):
     from scipy import interpolate
     newx1 = []
@@ -115,9 +83,6 @@ def complete_pixel_gaps(x,y):
 
 
     return newx,newy
-
-
-# In[13]:
 
 
 def scribble_to_labels(
@@ -162,8 +127,6 @@ def scribble_to_labels(
     return sk.segmentation.expand_labels(training_labels, distance=10)
 
 
-# In[14]:
-
 def rgb_from_labels(labelimage,colors):
 
     labelimage_rgb = np.zeros((labelimage.shape[0],labelimage.shape[1] ,4))
@@ -174,7 +137,6 @@ def rgb_from_labels(labelimage,colors):
     labelimage_rgb[:,:,3] = 255
     return labelimage_rgb.astype('uint8')
 
-# in [15]:
 
 def sk_rf_classifier(
     im,
