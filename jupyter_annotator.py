@@ -3,7 +3,9 @@ from bokeh.models import PolyDrawTool,PolyEditTool,FreehandDrawTool
 from bokeh.plotting import figure, show
 
 def read_image(
-    path
+    path,
+    scale=1,
+    filterkernel=10,
 ):
     """
         Read H&E image 
@@ -13,10 +15,21 @@ def read_image(
         path 
             path to image, must follow supported Pillow formats - https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html
         categorical_covariate_keys
+        scale 
+            a factor to scale down image, if this is applied (any value smaller than 1) a gaussian filter would be applied 
+        filterkernel
+            for scaling image and filtering before scalng by a factor, default = 10
 
     """
     from PIL import Image
+    from PIL import ImageFilter
+
     im = Image.open(path)
+    if scale<1:
+        width, height = im.size
+        newsize = (int(width*scale), int(height*scale))
+        # filtered = im.filter(ImageFilter.GaussianBlur(radius=filterkernel))
+        im = im.resize(newsize)
     im = im.convert("RGBA")
     return np.array(im)
 
@@ -163,7 +176,7 @@ def sk_rf_classifier(
 def overlay_lebels(im1,im2,alpha=0.8,show=True):
     #generate overlay image
     import matplotlib.pyplot as plt
-    plt.rcParams["figure.figsize"] = [5, 5]
+    plt.rcParams["figure.figsize"] = [10, 10]
     plt.rcParams["figure.dpi"] = 100
     out_img = np.zeros(im1.shape,dtype=im1.dtype)
     out_img[:,:,:] = (alpha * im1[:,:,:]) + ((1-alpha) * im2[:,:,:])
@@ -179,7 +192,7 @@ def annotator(
     annotation,
     anno_order,
     anno_colors,
-    fig_downsize_factor = 10,
+    fig_downsize_factor = 5,
     
 ):
     """
@@ -273,11 +286,32 @@ def update_annotator(
                 x = np.array(render_dict[a].data_source.data['xs'][o]).astype(int)
                 y = np.array(render_dict[a].data_source.data['ys'][o]).astype(int)
                 rr, cc = polygon(y, x)
-                corrected_labels[rr, cc] = idx+1
+                inshape = np.where(np.array(result.shape[0]>rr) & np.array(0<rr) & np.array(result.shape[1]>cc) & np.array(0<cc))[0]
+                corrected_labels[rr[inshape], cc[inshape]] = idx+1 
+                # make sure pixels outside the image are ignored
 
-    # corrected_labels = corrected_labels.transpose()     
     #generate overlay image
     rgb = rgb_from_labels(corrected_labels,anno_colors)
     out_img = overlay_lebels(imarray,rgb,alpha=0.8,show=False)
     # out_img = out_img.transpose() 
     return out_img, corrected_labels
+
+def rescale_image(
+    label_image,
+    target_size,
+):
+     """
+        rescales label image to original image size 
+        
+        Parameters
+        ----------     
+        label_image  
+            labeled image (nparray)
+        scale  
+            factor to enlarge image
+
+    """
+    imP = Image.fromarray(label_image)
+    newsize = (target_size[0], target_size[1])
+    
+    return np.array(imP.resize(newsize))
