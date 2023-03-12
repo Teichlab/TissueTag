@@ -2,7 +2,7 @@ import numpy as np
 from bokeh.models import PolyDrawTool,PolyEditTool,FreehandDrawTool
 from bokeh.plotting import figure, show
 
-def read_hne(
+def read_image(
     path
 ):
     """
@@ -44,7 +44,7 @@ def scribbler(
     imarray_c = imarray[:,:].copy()
     np_img2d = imarray_c.view("uint32").reshape(imarray_c.shape[:2])
 
-    p =  figure(width=1000,height=1000)
+    p =  figure(width=1000,height=1000,match_aspect=True)
     plotted_image = p.image_rgba(image=[np_img2d], x=0, y=0, dw=imarray_c.shape[1], dh=imarray_c.shape[0])
     anno_color_map = dict(zip(anno_order, anno_colors))
     anno_color_map
