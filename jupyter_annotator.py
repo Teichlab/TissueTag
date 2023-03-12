@@ -296,6 +296,7 @@ def update_annotator(
     # out_img = out_img.transpose() 
     return out_img, corrected_labels
 
+
 def rescale_image(
     label_image,
     target_size,
