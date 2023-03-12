@@ -301,7 +301,7 @@ def rescale_image(
     label_image,
     target_size,
 ):
-     """
+    """
         rescales label image to original image size 
         
         Parameters
