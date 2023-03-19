@@ -1,11 +1,17 @@
-import numpy as np
+import numpy as np # last update 18/3/23
 from bokeh.models import PolyDrawTool,PolyEditTool,FreehandDrawTool
 from bokeh.plotting import figure, show
+from PIL import Image
+Image.MAX_IMAGE_PIXELS = None
+
+
 
 def read_image(
     path,
     scale=1,
+    scaleto1ppm=True,
     filterkernel=10,
+    contrast_factor=1,
 ):
     """
         Read H&E image 
@@ -21,16 +27,24 @@ def read_image(
             for scaling image and filtering before scalng by a factor, default = 10
 
     """
-    from PIL import Image
-    from PIL import ImageFilter
-
+    from PIL import ImageFilter, ImageEnhance
     im = Image.open(path)
+    
+    ppm = im.info['resolution'][0]
     if scale<1:
         width, height = im.size
         newsize = (int(width*scale), int(height*scale))
         # filtered = im.filter(ImageFilter.GaussianBlur(radius=filterkernel))
         im = im.resize(newsize)
+    if scaleto1ppm:
+        width, height = im.size
+        newsize = (int(width/ppm), int(height/ppm))
+        # filtered = im.filter(ImageFilter.GaussianBlur(radius=filterkernel))
+        im = im.resize(newsize)
     im = im.convert("RGBA")
+    enhancer = ImageEnhance.Contrast(im)
+    factor = contrast_factor #increase contrast
+    im = enhancer.enhance(factor*factor)
     return np.array(im)
 
 
@@ -316,3 +330,52 @@ def rescale_image(
     newsize = (target_size[0], target_size[1])
     
     return np.array(imP.resize(newsize))
+
+
+def save_annotation(
+    folder,
+    label_image,
+    file_name, 
+    anno_names
+):
+    """
+        saves the annotated image as .tif and in addition saves the translation from annotations to labels in a pickle file 
+        
+        Parameters
+        ----------     
+        label_image  
+            labeled image (nparray)
+        file_name  
+            name for tif image and pickle
+
+    """
+    import pickle
+    from PIL import Image 
+    label_image = Image.fromarray(label_image)
+    label_image.save(folder+file_name+'.tif')
+    with open(folder+file_name+'.pickle', 'wb') as handle:
+        pickle.dump(dict(zip(anno_names,range(1,len(anno_names)+1))), handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+def load_annotation(
+    folder,
+    label_image,
+    file_name, 
+):
+    """
+        saves the annotated image as .tif and in addition saves the translation from annotations to labels in a pickle file 
+        
+        Parameters
+        ----------     
+        label_image  
+            labeled image (nparray)
+        file_name  
+            name for tif image and pickle
+
+    """
+    import pickle
+    imP = Image.open(folder+file_name+'.tif')
+    im = np.array(imP)
+    with open(folder+file_name+'.pickle', 'rb') as handle:
+        anno_order = pickle.load(handle)
+    return im, anno_order
+    
