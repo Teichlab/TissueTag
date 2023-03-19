@@ -30,13 +30,14 @@ def read_image(
     from PIL import ImageFilter, ImageEnhance
     im = Image.open(path)
     
-    ppm = im.info['resolution'][0]
+   
     if scale<1:
         width, height = im.size
         newsize = (int(width*scale), int(height*scale))
         # filtered = im.filter(ImageFilter.GaussianBlur(radius=filterkernel))
         im = im.resize(newsize)
     if scaleto1ppm:
+        ppm = im.info['resolution'][0]
         width, height = im.size
         newsize = (int(width/ppm), int(height/ppm))
         # filtered = im.filter(ImageFilter.GaussianBlur(radius=filterkernel))
@@ -50,8 +51,8 @@ def read_image(
 
 def scribbler(
     imarray,
-    anno_order,
-    anno_colors,
+    anno_dict,
+    plot_scale,
 ):
     """
         interactive scribble line annotations with Bokeh  
@@ -60,24 +61,22 @@ def scribbler(
         ----------     
         imarray  
             image in numpy array format (nparray)
-        anno_order
-            list of structures to annotate (list of strings)
-        anno_colors
-            list of colors for the structures in anno_order, must have the same length (list of strings)
+        anno_dict
+            dictionary of structures to annotate and colors for the structures     
 
     """
 
-    
+    imarray = imarray.astype('uint8')
     imarray_c = imarray[:,:].copy()
     np_img2d = imarray_c.view("uint32").reshape(imarray_c.shape[:2])
 
-    p =  figure(width=1000,height=1000,match_aspect=True)
+    p =  figure(width=int(imarray_c.shape[1]/3.5*plot_scale),height=int(imarray_c.shape[0]/3.5*plot_scale),match_aspect=True)
     plotted_image = p.image_rgba(image=[np_img2d], x=0, y=0, dw=imarray_c.shape[1], dh=imarray_c.shape[0])
-    anno_color_map = dict(zip(anno_order, anno_colors))
+    anno_color_map = anno_dict
     anno_color_map
     render_dict = {}
     draw_tool_dict = {}
-    for l in anno_order:
+    for l in list(anno_dict.keys()):
         render_dict[l] = p.multi_line([], [], line_width=5, alpha=0.4, color=anno_color_map[l])
         draw_tool_dict[l] = FreehandDrawTool(renderers=[render_dict[l]], num_objects=50)
         draw_tool_dict[l].description = l
@@ -196,7 +195,7 @@ def overlay_lebels(im1,im2,alpha=0.8,show=True):
     out_img[:,:,:] = (alpha * im1[:,:,:]) + ((1-alpha) * im2[:,:,:])
     out_img[:,:,3] = 255
     if show:
-        plt.imshow(out_img)
+        plt.imshow(out_img,origin='lower')
     return out_img
 
 
@@ -204,8 +203,7 @@ def overlay_lebels(im1,im2,alpha=0.8,show=True):
 def annotator(
     imarray,
     annotation,
-    anno_order,
-    anno_colors,
+    anno_dict,
     fig_downsize_factor = 5,
     
 ):
@@ -219,10 +217,8 @@ def annotator(
             image in numpy array format (nparray)
         annotation  
             label image in numpy array format (nparray)
-        anno_order
-            list of structures to annotate (list of strings)
-        anno_colors
-            list of colors for the structures in anno_order, must have the same length (list of strings)
+        anno_dict
+            dictionary of structures to annotate and colors for the structures             
         fig_downsize_factor
             a plotting thing
 
@@ -235,14 +231,15 @@ def annotator(
     # tab1
     imarray_c = annotation[:,:].copy()
     np_img2d = imarray_c.view("uint32").reshape(imarray_c.shape[:2])
-    p = figure(width=int(imarray_c.shape[1]/fig_downsize_factor),height=int(imarray_c.shape[0]/fig_downsize_factor))
+    # p = figure(width=int(imarray_c.shape[1]/fig_downsize_factor),height=int(imarray_c.shape[0]/fig_downsize_factor))
+    p = figure(width=int(imarray_c.shape[1]/3.5),height=int(imarray_c.shape[0]/3.5),match_aspect=True)
     plotted_image = p.image_rgba(image=[np_img2d], x=0, y=0, dw=imarray_c.shape[1], dh=imarray_c.shape[0])
     tab1 = TabPanel(child=p, title="Annotation")
 
     # tab2
     imarray_c = imarray[:,:].copy()
     np_img2d = imarray_c.view("uint32").reshape(imarray_c.shape[:2])
-    p1 = figure(width=int(imarray_c.shape[1]/fig_downsize_factor),height=int(imarray_c.shape[0]/fig_downsize_factor), x_range=p.x_range,y_range=p.y_range)
+    p1 = figure(width=int(imarray_c.shape[1]/3.5),height=int(imarray_c.shape[0]/3.5),match_aspect=True, x_range=p.x_range,y_range=p.y_range)
     plotted_image = p1.image_rgba(image=[np_img2d], x=0, y=0, dw=imarray_c.shape[1], dh=imarray_c.shape[0])
     tab2 = TabPanel(child=p1, title="Image")
 
@@ -252,13 +249,13 @@ def annotator(
     # p2 = figure(width=int(imarray_c.shape[1]/fig_downsize_factor),height=int(imarray_c.shape[0]/fig_downsize_factor), x_range=p.x_range,y_range=p.y_range)
     # plotted_image = p2.image_rgba(image=[np_img2d], x=0, y=0, dw=imarray_c.shape[1], dh=imarray_c.shape[0])
     # tab3 = TabPanel(child=p2, title="Annotation")
-    anno_color_map = dict(zip(anno_order, anno_colors))
+    anno_color_map = anno_dict
     anno_color_map
 
     # brushes
     render_dict = {}
     draw_tool_dict = {}
-    for l in anno_order:
+    for l in list(anno_dict.keys()):
         render_dict[l] = p.multi_line([], [], line_width=5, alpha=0.4, color=anno_color_map[l])
         draw_tool_dict[l] = FreehandDrawTool(renderers=[render_dict[l]], num_objects=50)
         draw_tool_dict[l].description = l
@@ -271,8 +268,9 @@ def annotator(
 def update_annotator(
     imarray,
     result,
-    anno_colors,
+    anno_dict,
     render_dict,
+    alpha,
 ):
     """
         updates annotations and generates overly (out_img) and the label image (corrected_labels)
@@ -283,8 +281,8 @@ def update_annotator(
             image in numpy array format (nparray)
         result  
             label image in numpy array format (nparray)
-        anno_colors
-            list of colors for the structures in anno_order, must have the same length (list of strings)
+        anno_dict
+            dictionary of structures to annotate and colors for the structures     
         render_dict
             bokeh data container
 
@@ -305,8 +303,8 @@ def update_annotator(
                 # make sure pixels outside the image are ignored
 
     #generate overlay image
-    rgb = rgb_from_labels(corrected_labels,anno_colors)
-    out_img = overlay_lebels(imarray,rgb,alpha=0.8,show=False)
+    rgb = rgb_from_labels(corrected_labels,list(anno_dict.values()))
+    out_img = overlay_lebels(imarray,rgb,alpha=alpha,show=False)
     # out_img = out_img.transpose() 
     return out_img, corrected_labels
 
@@ -379,3 +377,51 @@ def load_annotation(
         anno_order = pickle.load(handle)
     return im, anno_order
     
+    
+
+#The following notebook is a series of simple examples of applying the method to data on a 
+#CODEX/Keyence microscrope to produce virtual H&E images using fluorescence data.  If you 
+#find it useful, will you please consider citing the relevant article?:
+
+#Creating virtual H&E images using samples imaged on a commercial CODEX platform
+#Paul D. Simonson, Xiaobing Ren,  Jonathan R. Fromm
+#doi: https://doi.org/10.1101/2021.02.05.21249150
+#Submitted to Journal of Pathology Informatics, December 2020
+def simonson_vHE(
+    dapi_image,
+    eosin_image,
+):
+    import matplotlib.image as mpimg
+    def createVirtualHE(dapi_image, eosin_image, k1, k2, background, beta_DAPI, beta_eosin):
+        new_image = np.empty([dapi_image.shape[0], dapi_image.shape[1], 4])
+        new_image[:,:,0] = background[0] + (1 - background[0]) * np.exp(- k1 * beta_DAPI[0] * dapi_image - k2 * beta_eosin[0] * eosin_image)
+        new_image[:,:,1] = background[1] + (1 - background[1]) * np.exp(- k1 * beta_DAPI[1] * dapi_image - k2 * beta_eosin[1] * eosin_image)
+        new_image[:,:,2] = background[2] + (1 - background[2]) * np.exp(- k1 * beta_DAPI[2] * dapi_image - k2 * beta_eosin[2] * eosin_image)
+        new_image[:,:,3] = 1
+        new_image = new_image*255
+        return new_image.astype('uint8')
+
+    #Defaults:
+    k1 = k2 = 0.001
+
+    background_red = 0.25
+    background_green = 0.25
+    background_blue = 0.25
+    background = [background_red, background_green, background_blue]
+
+    beta_DAPI_red = 9.147
+    beta_DAPI_green = 6.9215
+    beta_DAPI_blue = 1.0
+    beta_DAPI = [beta_DAPI_red, beta_DAPI_green, beta_DAPI_blue]
+
+    beta_eosin_red = 0.1
+    beta_eosin_green = 15.8
+    beta_eosin_blue = 0.3
+    beta_eosin = [beta_eosin_red, beta_eosin_green, beta_eosin_blue]
+
+
+    dapi_image = dapi_image[:,:,0]+dapi_image[:,:,1]
+    eosin_image = eosin_image[:,:,0]+eosin_image[:,:,1]
+
+    print(dapi_image.shape)
+    return createVirtualHE(dapi_image, eosin_image, k1, k2, background=background, beta_DAPI=beta_DAPI, beta_eosin=beta_eosin)
