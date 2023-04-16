@@ -212,7 +212,7 @@ def scribble_to_labels(
             ys = ys + yt
             annotations[a] = annotations[a] + [np.vstack([np.array(render_dict[a].data_source.data['xs'][o]).astype(int),np.array(render_dict[a].data_source.data['ys'][o]).astype(int)])] # to save 
 
-        training_labels[np.array(xs).astype(int),np.array(ys).astype(int)] = idx+1
+        training_labels[np.floor(xs).astype(int),np.floor(ys).astype(int)] = idx+1
         # df = pd.DataFrame(render_dict[a].data_source.data)
         # df.index = a+'-'+df.index.astype('str')
         # annotations = pd.concat([annotations,df])
