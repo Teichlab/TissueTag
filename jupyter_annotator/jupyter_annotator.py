@@ -34,6 +34,7 @@ def read_image(
     scale=1,
     scaleto1ppm=True,
     contrast_factor=1,
+    background_image_path=None,
   
 ):
     """
@@ -51,13 +52,13 @@ def read_image(
     
     im = Image.open(path)
     
-   
     if scale<1:
         width, height = im.size
         newsize = (int(width*scale), int(height*scale))
         im = im.resize(newsize,Image.Resampling.LANCZOS)
         if ppm:
             ppm_out = ppm*scale
+            
     if scaleto1ppm:
         if not(ppm):
             try:
@@ -68,10 +69,22 @@ def read_image(
         width, height = im.size
         newsize = (int(width/ppm), int(height/ppm))
         im = im.resize(newsize,Image.Resampling.LANCZOS)
+
     im = im.convert("RGBA")
     enhancer = ImageEnhance.Contrast(im)
     factor = contrast_factor #increase contrast
     im = enhancer.enhance(factor*factor)
+    
+    if background_image_path:
+        im2 = Image.open(background_image_path)
+        im2 = im2.convert("RGBA")
+        enhancer = ImageEnhance.Contrast(im2)
+        factor = contrast_factor #increase contrast
+        im2 = enhancer.enhance(factor*factor)
+        im2 = im2.resize(newsize,Image.Resampling.LANCZOS)
+        im2 = im2.convert("RGBA")
+        im = simonson_vHE(np.array(im).astype('uint8'),np.array(im2).astype('uint8'))
+        
     return np.array(im), ppm_out
 
 def read_visium(
