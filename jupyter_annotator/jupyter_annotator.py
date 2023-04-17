@@ -22,7 +22,7 @@ from PIL import (Image, ImageColor, ImageDraw, ImageEnhance, ImageFilter,
 from scipy import interpolate
 from scipy.spatial import distance
 from skimage import data, feature, future, segmentation
-from skimage.draw import polygon
+from skimage.draw import polygon, disk
 from sklearn.ensemble import RandomForestClassifier
 from tqdm import tqdm
 
@@ -943,7 +943,7 @@ def object_annotator(
     return out_img, corrected_labels, object_dict
   
   
-  def gene_labels(adata,df,training_labels,marker_dict,annodict,r,labels_per_marker):
+def gene_labels(adata,df,training_labels,marker_dict,annodict,r,labels_per_marker):
     for m in list(marker_dict.keys()): 
         print(marker_dict[m])
         GeneIndex = np.where(adata.var_names.str.fullmatch(marker_dict[m]))[0]
