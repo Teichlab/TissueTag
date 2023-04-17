@@ -209,7 +209,68 @@ def scribbler(
     
     
     return p, render_dict
+
+
+def annotator(
+    imarray,
+    annotation,
+    anno_dict,
+    fig_downsize_factor = 5,
     
+):
+    """
+        interactive annotation tool with line annotations using Bokeh tabs for toggling between morphology and annotation. 
+        The principle is that selecting closed/semiclosed shaped that will later be filled accordind to the proper annotation.
+        
+        Parameters
+        ----------     
+        imarray  
+            image in numpy array format (nparray)
+        annotation  
+            label image in numpy array format (nparray)
+        anno_dict
+            dictionary of structures to annotate and colors for the structures             
+        fig_downsize_factor
+            a plotting thing
+
+    """
+    
+    # tab1
+    imarray_c = annotation[:,:].copy()
+    np_img2d = imarray_c.view("uint32").reshape(imarray_c.shape[:2])
+    # p = figure(width=int(imarray_c.shape[1]/fig_downsize_factor),height=int(imarray_c.shape[0]/fig_downsize_factor))
+    p = figure(width=int(imarray_c.shape[1]/fig_downsize_factor),height=int(imarray_c.shape[0]/fig_downsize_factor),match_aspect=True)
+    plotted_image = p.image_rgba(image=[np_img2d], x=0, y=0, dw=imarray_c.shape[1], dh=imarray_c.shape[0])
+    tab1 = TabPanel(child=p, title="Annotation")
+
+    # tab2
+    imarray_c = imarray[:,:].copy()
+    np_img2d = imarray_c.view("uint32").reshape(imarray_c.shape[:2])
+    p1 = figure(width=int(imarray_c.shape[1]/fig_downsize_factor),height=int(imarray_c.shape[0]/fig_downsize_factor),match_aspect=True, x_range=p.x_range,y_range=p.y_range)
+    plotted_image = p1.image_rgba(image=[np_img2d], x=0, y=0, dw=imarray_c.shape[1], dh=imarray_c.shape[0])
+    tab2 = TabPanel(child=p1, title="Image")
+
+    # # tab3
+    # imarray_c = result_rgb[:,:].copy()
+    # np_img2d = imarray_c.view("uint32").reshape(imarray_c.shape[:2])
+    # p2 = figure(width=int(imarray_c.shape[1]/fig_downsize_factor),height=int(imarray_c.shape[0]/fig_downsize_factor), x_range=p.x_range,y_range=p.y_range)
+    # plotted_image = p2.image_rgba(image=[np_img2d], x=0, y=0, dw=imarray_c.shape[1], dh=imarray_c.shape[0])
+    # tab3 = TabPanel(child=p2, title="Annotation")
+    anno_color_map = anno_dict
+    anno_color_map
+
+    # brushes
+    render_dict = {}
+    draw_tool_dict = {}
+    for l in list(anno_dict.keys()):
+        render_dict[l] = p.multi_line([], [], line_width=3, alpha=0.4, color=anno_color_map[l])
+        draw_tool_dict[l] = FreehandDrawTool(renderers=[render_dict[l]], num_objects=100, icon=create_icon(l[0],anno_color_map[l]))
+        draw_tool_dict[l].description = l
+        p.add_tools(draw_tool_dict[l])
+
+    tabs = Tabs(tabs=[tab1, tab2])
+    return tabs, render_dict
+
 def complete_pixel_gaps(x,y):
     
     newx1 = []
@@ -319,72 +380,7 @@ def overlay_lebels(im1,im2,alpha=0.8,show=True):
     if show:
         plt.imshow(out_img,origin='lower')
     return out_img
-
-
-    
-def annotator(
-    imarray,
-    annotation,
-    anno_dict,
-    fig_downsize_factor = 5,
-    
-):
-    """
-        interactive annotation tool with line annotations using Bokeh tabs for toggling between morphology and annotation. 
-        The principle is that selecting closed/semiclosed shaped that will later be filled accordind to the proper annotation.
-        
-        Parameters
-        ----------     
-        imarray  
-            image in numpy array format (nparray)
-        annotation  
-            label image in numpy array format (nparray)
-        anno_dict
-            dictionary of structures to annotate and colors for the structures             
-        fig_downsize_factor
-            a plotting thing
-
-    """
-    
-
-
-    # tab1
-    imarray_c = annotation[:,:].copy()
-    np_img2d = imarray_c.view("uint32").reshape(imarray_c.shape[:2])
-    # p = figure(width=int(imarray_c.shape[1]/fig_downsize_factor),height=int(imarray_c.shape[0]/fig_downsize_factor))
-    p = figure(width=int(imarray_c.shape[1]/fig_downsize_factor),height=int(imarray_c.shape[0]/fig_downsize_factor),match_aspect=True)
-    plotted_image = p.image_rgba(image=[np_img2d], x=0, y=0, dw=imarray_c.shape[1], dh=imarray_c.shape[0])
-    tab1 = TabPanel(child=p, title="Annotation")
-
-    # tab2
-    imarray_c = imarray[:,:].copy()
-    np_img2d = imarray_c.view("uint32").reshape(imarray_c.shape[:2])
-    p1 = figure(width=int(imarray_c.shape[1]/fig_downsize_factor),height=int(imarray_c.shape[0]/fig_downsize_factor),match_aspect=True, x_range=p.x_range,y_range=p.y_range)
-    plotted_image = p1.image_rgba(image=[np_img2d], x=0, y=0, dw=imarray_c.shape[1], dh=imarray_c.shape[0])
-    tab2 = TabPanel(child=p1, title="Image")
-
-    # # tab3
-    # imarray_c = result_rgb[:,:].copy()
-    # np_img2d = imarray_c.view("uint32").reshape(imarray_c.shape[:2])
-    # p2 = figure(width=int(imarray_c.shape[1]/fig_downsize_factor),height=int(imarray_c.shape[0]/fig_downsize_factor), x_range=p.x_range,y_range=p.y_range)
-    # plotted_image = p2.image_rgba(image=[np_img2d], x=0, y=0, dw=imarray_c.shape[1], dh=imarray_c.shape[0])
-    # tab3 = TabPanel(child=p2, title="Annotation")
-    anno_color_map = anno_dict
-    anno_color_map
-
-    # brushes
-    render_dict = {}
-    draw_tool_dict = {}
-    for l in list(anno_dict.keys()):
-        render_dict[l] = p.multi_line([], [], line_width=3, alpha=0.4, color=anno_color_map[l])
-        draw_tool_dict[l] = FreehandDrawTool(renderers=[render_dict[l]], num_objects=100)
-        draw_tool_dict[l].description = l
-        p.add_tools(draw_tool_dict[l])
-
-    tabs = Tabs(tabs=[tab1, tab2])
-    return tabs, render_dict
-
-
+   
 def update_annotator(
     imarray,
     result,
