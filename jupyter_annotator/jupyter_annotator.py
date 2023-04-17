@@ -6,6 +6,7 @@ import warnings
 from functools import partial
 from io import BytesIO
 
+import bokeh
 import matplotlib
 import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
@@ -14,19 +15,19 @@ import pandas as pd
 import scipy
 import seaborn as sns
 import skimage
-from bokeh.models import (FreehandDrawTool, PolyDrawTool, PolyEditTool,
-                          TabPanel, Tabs)
+from bokeh.core.properties import field
+from bokeh.models import (ColumnDataSource, FreehandDrawTool, PolyDrawTool,
+                          PolyEditTool, TabPanel, Tabs)
 from bokeh.plotting import figure, show
+from packaging import version
 from PIL import (Image, ImageColor, ImageDraw, ImageEnhance, ImageFilter,
                  ImageFont)
 from scipy import interpolate
 from scipy.spatial import distance
 from skimage import data, feature, future, segmentation
-from skimage.draw import polygon, disk
+from skimage.draw import disk, polygon
 from sklearn.ensemble import RandomForestClassifier
 from tqdm import tqdm
-from packaging import version
-import bokeh
 
 try:
     import scanpy as sc
@@ -250,21 +251,9 @@ def annotator(
     plotted_image = p1.image_rgba(image=[np_img2d], x=0, y=0, dw=imarray_c.shape[1], dh=imarray_c.shape[0])
     tab2 = TabPanel(child=p1, title="Image")
 
-    # # tab3
-    # imarray_c = result_rgb[:,:].copy()
-    # np_img2d = imarray_c.view("uint32").reshape(imarray_c.shape[:2])
-    # p2 = figure(width=int(imarray_c.shape[1]/fig_downsize_factor),height=int(imarray_c.shape[0]/fig_downsize_factor), x_range=p.x_range,y_range=p.y_range)
-    # plotted_image = p2.image_rgba(image=[np_img2d], x=0, y=0, dw=imarray_c.shape[1], dh=imarray_c.shape[0])
-    # tab3 = TabPanel(child=p2, title="Annotation")
     anno_color_map = anno_dict
     anno_color_map
-
-
-    from bokeh.models import ColumnDataSource
-    from bokeh.core.properties import field
-
     
-
     # brushes
     render_dict = {}
     draw_tool_dict = {}
