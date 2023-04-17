@@ -890,7 +890,7 @@ def poly_annotator(
     polt_tool_dict = {}
     for l in list(anno_dict.keys()):
         render_dict[l] = p.multi_line([], [], line_width=5, alpha=0.4, color=anno_color_map[l])
-        polt_tool_dict[l] = PolyDrawTool(renderers=[render_dict[l]], num_objects=100)
+        polt_tool_dict[l] = PolyDrawTool(renderers=[render_dict[l]], num_objects=100, icon=create_icon(l[0],anno_color_map[l]))
         polt_tool_dict[l].description = l
         p.add_tools(polt_tool_dict[l])
 
