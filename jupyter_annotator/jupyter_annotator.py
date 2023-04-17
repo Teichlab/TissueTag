@@ -77,9 +77,8 @@ def read_image(
 def read_visium(
     SpaceRanger_dir_path,
     use_resolution='hires',
-    original_path = None,
     res_in_ppm = None,
-  
+    fullres_path = None,  
 ):
     """
         Read 10X visium image data from spaceranger (1.3.0)
@@ -89,53 +88,51 @@ def read_visium(
         SpaceRanger_dir_path 
             path to 10X SpaceRanger output folder
         use_resolution 
-            image resolution to use either 'hires', 'hires5K' , 'lowres' or 'original' - if selected specify path to image used for mapping 
-        original_path
-            path to original image used for mapping 
+            image resolution to use either 'hires', 'lowres' or 'fullres'
+                            'fullres' is the image that was sent to SpaceRanger (togehter with sequencing data)
+                            if user_resolution == 'fullres' then fullres_path need to be specified
+        fullres_path
+            path to fullres image used for mapping 
         res_in_ppm
-            when using original resolution used to resize the original image to 0.5 pixels per microns unless stated eitherwise
+            when using full resolution used to resize the full image to 0.5 pixels per microns unless stated eitherwise
 
     """
-    
-    f = open(SpaceRanger_dir_path+'spatial/scalefactors_json.json'); scalef = json.load(f)
-        
+    spotsize = 55 #um
+
+    scalef = json.load(open(SpaceRanger_dir_path+'spatial/scalefactors_json.json','r'))
+    if use_resolution=='fullres':
+        assert fullres_path is not None, 'if use_resolution=="fullres" fullres_path has to be specified'
+
     df = pd.read_csv(SpaceRanger_dir_path+'spatial/tissue_positions_list.csv',header=None)
     df = df.set_index(keys=0)
     df = df[df[1]>0] # in tissue
     
+    # turn df to mu
+    fullres_ppm = scalef['spot_diameter_fullres']/spotsize
+    df[4] = df[4]/fullres_ppm
+    df[5] = df[5]/fullres_ppm
     
-    if use_resolution=='original':
-        ppm = scalef['spot_diameter_fullres']/55
-        im = Image.open(original_path)
+    if use_resolution=='fullres':
+        im = Image.open(fullres_path)
+        ppm = fullres_ppm
+    else:
+        im = Image.open(SpaceRanger_dir_path+'spatial/tissue_'+use_resolution+'_image.png')
+        ppm = scalef['spot_diameter_fullres']*scalef['tissue_'+use_resolution+'_scalef']/spotsize
+        
+    
+    if res_in_ppm:
         width, height = im.size
         newsize = (int(width*res_in_ppm/ppm), int(height*res_in_ppm/ppm))
         im = im.resize(newsize,Image.Resampling.LANCZOS)
-        out_ppm = res_in_ppm
-        df[4] = df[4]*res_in_ppm/ppm
-        df[5] = df[5]*res_in_ppm/ppm
-    else:
-        out_ppm = scalef['spot_diameter_fullres']*scalef['tissue_'+use_resolution+'_scalef']/55
-        im = Image.open(SpaceRanger_dir_path+'spatial/tissue_'+use_resolution+'_image.png')
-        width, height = im.size
-        ppm = scalef['tissue_'+use_resolution+'_scalef']
-        if res_in_ppm:
-            newsize = (int(width*res_in_ppm/ppm), int(height*res_in_ppm/ppm))
-            im = im.resize(newsize,Image.Resampling.LANCZOS)
-            out_ppm = res_in_ppm
-        else:
-            out_ppm = ppm
-                    
-        df[4] = df[4]*out_ppm
-        df[5] = df[5]*out_ppm
-        
-        # df[4] = df[4]*scalef['tissue_'+use_resolution+'_scalef']
-        # df[5] = df[5]*scalef['tissue_'+use_resolution+'_scalef']
-        
-  
-   
+        ppm = res_in_ppm
+    
+    # translate from mu to pixel
+    df[4] = df[4]*ppm
+    df[5] = df[5]*ppm
+    
 
     im = im.convert("RGBA")
-    return np.array(im), out_ppm, df
+    return np.array(im), ppm, df
 
 
 def scribbler(
