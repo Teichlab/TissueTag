@@ -338,7 +338,14 @@ def scribble_to_labels(
             xs = xs + xt
             ys = ys + yt
             annotations[a] = annotations[a] + [np.vstack([np.array(render_dict[a].data_source.data['xs'][o]).astype(int),np.array(render_dict[a].data_source.data['ys'][o]).astype(int)])] # to save 
-
+        
+        # filter point's outside of image 
+        xs = np.array(xs)
+        ys = np.array(ys)
+        inshape = (xs>0) & (xs<imarray.shape[0]) & (ys>0) & (ys<imarray.shape[1])
+        xs = xs[inshape]
+        ys = ys[inshape]
+            
         training_labels[np.floor(xs).astype(int),np.floor(ys).astype(int)] = idx+1
         # df = pd.DataFrame(render_dict[a].data_source.data)
         # df.index = a+'-'+df.index.astype('str')
@@ -941,7 +948,7 @@ def object_annotator(
                 x = np.array(render_dict[a].data_source.data['xs'][o]).astype(int)
                 y = np.array(render_dict[a].data_source.data['ys'][o]).astype(int)
                 rr, cc = polygon(y, x)
-                inshape = np.where(np.array(result.shape[0]>rr) & np.array(0<rr) & np.array(result.shape[1]>cc) & np.array(0<cc))[0]         # make sure pixels outside the image are ignored
+                inshape = (result.shape[0]>rr) & (0<rr) & (result.shape[1]>cc) & (0<cc)    # make sure pixels outside the image are ignored
                 corrected_labels[rr[inshape], cc[inshape]] = o+1
                 object_dict[a+'_'+str(o)] = random.choice(colorpool)
 
