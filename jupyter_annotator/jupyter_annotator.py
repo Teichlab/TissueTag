@@ -941,3 +941,50 @@ def object_annotator(
     out_img = overlay_lebels(imarray,rgb,alpha=alpha,show=False)
     # out_img = out_img.transpose() 
     return out_img, corrected_labels, object_dict
+  
+  
+  def gene_labels(adata,df,training_labels,marker_dict,annodict,r,labels_per_marker):
+    for m in list(marker_dict.keys()): 
+        print(marker_dict[m])
+        GeneIndex = np.where(adata.var_names.str.fullmatch(marker_dict[m]))[0]
+        GeneData = adata.X[:,GeneIndex].todense()
+        SortedExp = np.argsort(GeneData,axis=0)[::-1]
+        list_gene = adata.obs.index[np.squeeze(SortedExp[range(labels_per_marker[m])])][0]
+        for idx,sub in enumerate(list(annodict.keys())):
+            if sub == m:
+                back = idx
+        for coor in df.loc[list_gene,4:5].to_numpy():
+            training_labels[disk((coor[0],coor[1]),r/4)] = back+1
+    return training_labels
+
+def background_labels(shape,coordinates,r,every_x_spots=10,label=1):
+    training_labels = np.zeros(shape, dtype=np.uint8)
+    Xmin = np.min(coordinates[:,0])
+    Xmax = np.max(coordinates[:,0])
+    Ymin = np.min(coordinates[:,1])
+    Ymax = np.max(coordinates[:,1])
+    grid = hexagonal_grid(r,shape) # generate a grid over the entire image 
+    grid = grid.T
+    grid = grid[::every_x_spots,:]
+    for coor in grid:
+        training_labels[disk((coor[1],coor[0]),r)] = label
+    for coor in coordinates.T:
+        training_labels[disk((coor[1],coor[0]),r*4)] = 0
+    
+    # training_labels[int(Ymin):int(Ymax),int(Xmin):int(Xmax)] = 0 # remove spots from tisue area
+    return training_labels
+
+def hexagonal_grid(SpotSize,shape):
+    helper = SpotSize
+    X1 = np.linspace(helper,shape[0]-helper,round(shape[0]/helper))
+    Y1 = np.linspace(helper,shape[1]-2*helper,round(shape[1]/(2*helper)))
+    X2 = X1 + SpotSize/2
+    Y2 = Y1 + helper
+    Gx1, Gy1 = np.meshgrid(X1,Y1)
+    Gx2, Gy2 = np.meshgrid(X2,Y2)
+    positions1 = np.vstack([Gy1.ravel(), Gx1.ravel()])
+    positions2 = np.vstack([Gy2.ravel(), Gx2.ravel()])
+    positions = np.hstack([positions1,positions2])
+    return positions
+
+
