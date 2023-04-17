@@ -1,11 +1,32 @@
-import numpy as np # last update 18/3/23
-from bokeh.models import PolyDrawTool,PolyEditTool,FreehandDrawTool
-from bokeh.plotting import figure, show
-from PIL import Image
-Image.MAX_IMAGE_PIXELS = None
-import matplotlib.pyplot as plt
-import pandas as pd
+import json
+import pickle
+import random
+import warnings
+from functools import partial
 
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import scipy
+import seaborn as sns
+import skimage
+from bokeh.models import (FreehandDrawTool, PolyDrawTool, PolyEditTool,
+                          TabPanel, Tabs)
+from bokeh.plotting import figure, show
+from PIL import Image, ImageColor, ImageEnhance, ImageFilter
+from scipy import interpolate
+from scipy.spatial import distance
+from skimage import data, feature, future, segmentation
+from skimage.draw import polygon
+from sklearn.ensemble import RandomForestClassifier
+from tqdm import tqdm
+
+try:
+    import scanpy as sc
+except:
+    print('scanpy is not available')
+
+Image.MAX_IMAGE_PIXELS = None
 
 def read_image(
     path,
@@ -27,7 +48,7 @@ def read_image(
             a factor to scale down image, if this is applied (any value smaller than 1) a gaussian filter would be applied 
 
     """
-    from PIL import ImageFilter, ImageEnhance
+    
     im = Image.open(path)
     
    
@@ -61,7 +82,7 @@ def read_visium(
   
 ):
     """
-        Read 10X visium image data 
+        Read 10X visium image data from spaceranger (1.3.0)
         
         Parameters
         ----------     
@@ -75,7 +96,7 @@ def read_visium(
             when using original resolution used to resize the original image to 0.5 pixels per microns unless stated eitherwise
 
     """
-    import json 
+    
     f = open(SpaceRanger_dir_path+'spatial/scalefactors_json.json'); scalef = json.load(f)
         
     df = pd.read_csv(SpaceRanger_dir_path+'spatial/tissue_positions_list.csv',header=None)
@@ -154,7 +175,7 @@ def scribbler(
     return p, render_dict
     
 def complete_pixel_gaps(x,y):
-    from scipy import interpolate
+    
     newx1 = []
     newx2 = []
     for idx,px in enumerate(x[:-1]):
@@ -224,7 +245,7 @@ def scribble_to_labels(
 def rgb_from_labels(labelimage,colors):
 
     labelimage_rgb = np.zeros((labelimage.shape[0],labelimage.shape[1] ,4))
-    from PIL import ImageColor
+    
     for c in range(len(colors)):
         color = ImageColor.getcolor(colors[c], "RGB")
         labelimage_rgb[np.where(labelimage == c+1)[0],np.where(labelimage == c+1)[1],0:3] = np.array(color)
@@ -237,9 +258,7 @@ def sk_rf_classifier(
     training_labels
     
 ):
-    from skimage import data, segmentation, feature, future
-    from sklearn.ensemble import RandomForestClassifier
-    from functools import partial
+
 
     sigma_min = 1
     sigma_max = 16
@@ -256,7 +275,6 @@ def sk_rf_classifier(
 
 def overlay_lebels(im1,im2,alpha=0.8,show=True):
     #generate overlay image
-    import matplotlib.pyplot as plt
     plt.rcParams["figure.figsize"] = [10, 10]
     plt.rcParams["figure.dpi"] = 100
     out_img = np.zeros(im1.shape,dtype=im1.dtype)
@@ -292,8 +310,7 @@ def annotator(
 
     """
     
-    from bokeh.plotting import figure, show
-    from bokeh.models import TabPanel, Tabs
+
 
     # tab1
     imarray_c = annotation[:,:].copy()
@@ -355,7 +372,7 @@ def update_annotator(
 
     """
     
-    from skimage.draw import polygon
+    
     corrected_labels = result.copy()
     # annotations = pd.DataFrame()
     for idx,a in enumerate(render_dict.keys()):
@@ -416,8 +433,7 @@ def save_annotation(
             name for tif image and pickle
 
     """
-    import pickle
-    from PIL import Image 
+
     label_image = Image.fromarray(label_image)
     label_image.save(folder+file_name+'.tif')
     with open(folder+file_name+'.pickle', 'wb') as handle:
@@ -443,7 +459,6 @@ def load_annotation(
             name for tif image and pickle without extensions
 
     """
-    import pickle
     imP = Image.open(folder+file_name+'.tif')
     
     ppm = imP.info['resolution'][0]
@@ -484,7 +499,6 @@ def simonson_vHE(
     dapi_image,
     eosin_image,
 ):
-    import matplotlib.image as mpimg
     def createVirtualHE(dapi_image, eosin_image, k1, k2, background, beta_DAPI, beta_eosin):
         new_image = np.empty([dapi_image.shape[0], dapi_image.shape[1], 4])
         new_image[:,:,0] = background[0] + (1 - background[0]) * np.exp(- k1 * beta_DAPI[0] * dapi_image - k2 * beta_eosin[0] * eosin_image)
@@ -526,7 +540,7 @@ def generate_hires_grid(
     spot_diameter,
     pixels_per_micron,
 ):
-    import skimage
+    
     helper = spot_diameter*pixels_per_micron
     X1 = np.linspace(helper,im.shape[0]-helper,round(im.shape[0]/helper))
     Y1 = np.linspace(helper,im.shape[1]-2*helper,round(im.shape[1]/(2*helper)))
@@ -569,15 +583,13 @@ def grid_anno(
             grid positions
 
     """
-    import pandas as pd
-    import skimage
+
     print('generating grid with spot size - '+str(spot_diameter)+', with resolution of - '+str(pixels_per_micron)+' ppm')
     positions = generate_hires_grid(im,spot_diameter,pixels_per_micron)
     positions = positions.astype('float32')
     dim = [im.shape[0],im.shape[1]]
     # transform tissue annotation images to original size
-    from tqdm import tqdm
-    from scipy.spatial import distance
+
     radius = spot_diameter/8
     df = pd.DataFrame(
         np.vstack((np.array(range(len(positions.T[:,0]))),positions.T[:,0],
@@ -635,7 +647,7 @@ def axis_2p_norm(
     structure_list,
     weights = [1,1], 
 ):
-    import warnings
+    
     warnings.filterwarnings("ignore")
     # CMA calculations 
     fa = weights[0]
@@ -704,7 +716,7 @@ def anno_to_cells(
     plt.title('morpho spcae')
     plt.show()
 
-    import scipy
+
     # migrate continues annotations
     xi = np.vstack([df_cells['centroid-1'],df_cells['centroid-0']]).T
     for k in numerical_annotations:
@@ -747,8 +759,8 @@ def anno_to_visium_spots(
     plt.title('morpho spcae')
     plt.show()
 
-    import scipy
-    import scanpy as sc
+
+
     # migrate continues annotations
     xi = np.vstack([df_vis[5],df_vis[4]]).T
     for k in numerical_annotations:
@@ -781,7 +793,7 @@ def plot_grid(
 ):   
     
     plt.figure(dpi=dpi, figsize=figsize)
-    import seaborn as sns
+    
     ct_order = list((df[annotation].value_counts()>0).keys())
     ct_color_map = dict(zip(ct_order, np.array(sns.color_palette("colorblind", len(ct_order)))[range(len(ct_order))]))
     sns.scatterplot(x='x',y='y',hue=annotation,s=spotsize,data = df,palette=ct_color_map,hue_order=ct_order)
@@ -820,8 +832,7 @@ def poly_annotator(
 
     """
     
-    from bokeh.plotting import figure, show
-    from bokeh.models import TabPanel, Tabs
+
 
     # tab1
     imarray_c = annotation[:,:].copy()
@@ -855,12 +866,12 @@ def poly_annotator(
     return tabs, render_dict
 
 def object_annotator(
-imarray,
-result,
-anno_dict,
-render_dict,
-alpha,
-):
+    imarray,
+    result,
+    anno_dict,
+    render_dict,
+    alpha,
+    ):
     """
         extracts annotations and lables them according to bruch strokes while generating (out_img) and the label image (corrected_labels) and the anno_dict object 
         
@@ -877,8 +888,7 @@ alpha,
 
     """
     colorpool = ['yellow','green','cyan','brown','magenta','blue','red','orange']
-    from skimage.draw import polygon
-    import random
+
 
     corrected_labels = result.copy()
     # annotations = pd.DataFrame()
