@@ -25,6 +25,8 @@ from skimage import data, feature, future, segmentation
 from skimage.draw import polygon, disk
 from sklearn.ensemble import RandomForestClassifier
 from tqdm import tqdm
+from packaging import version
+import bokeh
 
 try:
     import scanpy as sc
@@ -49,6 +51,8 @@ def create_icon(name, color):
     ImageDraw.Draw(img).text((5
                               , 2), name,fill=tuple((np.array(matplotlib.colors.to_rgb(color))*255).astype(int)),
                               font=ImageFont.truetype(font_path, font_size))
+    if version.parse(bokeh.__version__) < version.parse("3.1.0"):
+        img = to_base64(img)
     return img
 
 
