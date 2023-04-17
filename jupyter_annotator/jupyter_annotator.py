@@ -1,9 +1,13 @@
+import base64
 import json
 import pickle
 import random
 import warnings
 from functools import partial
+from io import BytesIO
 
+import matplotlib
+import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -13,7 +17,8 @@ import skimage
 from bokeh.models import (FreehandDrawTool, PolyDrawTool, PolyEditTool,
                           TabPanel, Tabs)
 from bokeh.plotting import figure, show
-from PIL import Image, ImageColor, ImageEnhance, ImageFilter
+from PIL import (Image, ImageColor, ImageDraw, ImageEnhance, ImageFilter,
+                 ImageFont)
 from scipy import interpolate
 from scipy.spatial import distance
 from skimage import data, feature, future, segmentation
@@ -27,6 +32,25 @@ except:
     print('scanpy is not available')
 
 Image.MAX_IMAGE_PIXELS = None
+
+
+font_path = fm.findfont('DejaVu Sans')
+
+
+def to_base64(img):
+    buffered = BytesIO()
+    img.save(buffered, format="png")
+    data = base64.b64encode(buffered.getvalue()).decode('utf-8')
+    return f'data:image/png;base64,{data}'
+
+def create_icon(name, color):
+    font_size = 25
+    img = Image.new('RGBA', (30, 30), (255, 0, 0, 0))
+    ImageDraw.Draw(img).text((5
+                              , 2), name,fill=tuple((np.array(matplotlib.colors.to_rgb(color))*255).astype(int)),
+                              font=ImageFont.truetype(font_path, font_size))
+    return img
+
 
 def read_image(
     path,
@@ -164,8 +188,7 @@ def scribbler(
 
     """
 
-    imarray = imarray.astype('uint8')
-    imarray_c = imarray[:,:].copy()
+    imarray_c = imarray.astype('uint8')[:,:].copy()
     np_img2d = imarray_c.view("uint32").reshape(imarray_c.shape[:2])
 
     p =  figure(width=int(imarray_c.shape[1]/3.5*plot_scale),height=int(imarray_c.shape[0]/3.5*plot_scale),match_aspect=True)
@@ -176,7 +199,7 @@ def scribbler(
     draw_tool_dict = {}
     for l in list(anno_dict.keys()):
         render_dict[l] = p.multi_line([], [], line_width=5, alpha=0.4, color=anno_color_map[l])
-        draw_tool_dict[l] = FreehandDrawTool(renderers=[render_dict[l]], num_objects=200)
+        draw_tool_dict[l] = FreehandDrawTool(renderers=[render_dict[l]], num_objects=200, icon=create_icon(l[0],anno_color_map[l]))
         draw_tool_dict[l].description = l
         p.add_tools(draw_tool_dict[l])
     
