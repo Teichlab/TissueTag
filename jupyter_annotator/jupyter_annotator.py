@@ -259,14 +259,34 @@ def annotator(
     anno_color_map = anno_dict
     anno_color_map
 
+
+    from bokeh.models import ColumnDataSource
+    from bokeh.core.properties import field
+
+    
+
     # brushes
     render_dict = {}
     draw_tool_dict = {}
+    source_data_dict = {}
+
+    render_dict_2 = {}
+    draw_tool_dict_2 = {}
+
     for l in list(anno_dict.keys()):
-        render_dict[l] = p.multi_line([], [], line_width=3, alpha=0.4, color=anno_color_map[l])
+        draw_source = ColumnDataSource(data=dict(xs=[], ys=[]))
+
+        render_dict[l] = p.multi_line(field("xs"), field("ys"), line_width=3, alpha=0.4, color=anno_color_map[l], source=draw_source)
         draw_tool_dict[l] = FreehandDrawTool(renderers=[render_dict[l]], num_objects=100, icon=create_icon(l[0],anno_color_map[l]))
         draw_tool_dict[l].description = l
         p.add_tools(draw_tool_dict[l])
+
+        render_dict_2[l] = p1.multi_line(field("xs"), field("ys"), line_width=3, alpha=0.4, color=anno_color_map[l], source=draw_source)
+        draw_tool_dict_2[l] = FreehandDrawTool(renderers=[render_dict_2[l]], num_objects=100, icon=create_icon(l[0],anno_color_map[l]))
+        draw_tool_dict_2[l].description = l
+        p1.add_tools(draw_tool_dict_2[l])
+
+        source_data_dict[l] = draw_source
 
     tabs = Tabs(tabs=[tab1, tab2])
     return tabs, render_dict
