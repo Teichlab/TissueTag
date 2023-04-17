@@ -39,7 +39,6 @@ def read_image(
 ):
     """
         Read H&E image 
-        
         Parameters
         ----------     
         path 
