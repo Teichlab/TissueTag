@@ -31,7 +31,7 @@ say 'y' when asked
 6) install open-cv
 `pip install opencv-python`
 
-6.5) optional - install cellpose 
+6_5) optional - install cellpose 
 		`pip install cellpose` 
 		`pip uninstall torch`
 		`conda install pytorch cudatoolkit=11.3 -c pytorch`
