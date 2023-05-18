@@ -33,7 +33,7 @@ say 'y' when asked
 
 6.5) optional - install cellpose 
 		`pip install cellpose` 
-		`pip uninstall torch
+		`pip uninstall torch`
 		`conda install pytorch cudatoolkit=11.3 -c pytorch`
 
 7) install bokeh 
