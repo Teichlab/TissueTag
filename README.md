@@ -16,29 +16,29 @@ Python package to interactively annotate histological images within a Jupyter no
 Instructions for imagespot env 
 
 1) Create a new conda environment:
-$ conda create -n imagespot python=3.9
+`conda create -n imagespot python=3.9`
 say 'y' when asked
 
 2) activate new environment 
-$ conda activate imagespot 
+`conda activate imagespot` 
 
 3) install scanpy
-$ conda install -c conda-forge scanpy python-igraph leidenalg
+`conda install -c conda-forge scanpy python-igraph leidenalg`
 
 4) install jupyter-lab 
-$ conda install -c conda-forge jupyterlab
+`conda install -c conda-forge jupyterlab`
 
 6) install open-cv
-$ pip install opencv-python
+`pip install opencv-python`
 
 6.5) optional - install cellpose 
-		$ pip install cellpose 
-		$ pip uninstall torch
-		$ conda install pytorch cudatoolkit=11.3 -c pytorch
+		`pip install cellpose` 
+		`pip uninstall torch
+		`conda install pytorch cudatoolkit=11.3 -c pytorch`
 
 7) install bokeh 
-$ pip install jupyter_bokeh
-$ pip install bokeh 
+`pip install jupyter_bokeh`
+`pip install bokeh` 
 
 
 8) add the new enviroment to jupyter lab path  
