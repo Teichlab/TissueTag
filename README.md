@@ -1,4 +1,7 @@
-<img src="https://github.com/nadavyayon/TissueTag/blob/main/tissueTag%20logo-01.png" width="300" >
+<p align="center">
+	<img src="https://github.com/nadavyayon/TissueTag/blob/main/tissueTag%20logo-01.png" width="300" >
+</p>
+
 
 # Tissue Tag jupyter image annotator
 General instructions until replaced with something proper 
