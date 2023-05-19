@@ -1,4 +1,4 @@
-![alt text](https://github.com/nadavyayon/TissueTag/blob/main/tissueTag%20logo-01.png)
+![alt text](https://github.com/nadavyayon/TissueTag/blob/main/tissueTag%20logo-01.png | width=100)
 
 
 # Tissue Tag jupyter image annotator
