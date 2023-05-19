@@ -527,7 +527,7 @@ def update_annotator(imarray, result, anno_dict, render_dict, alpha):
                 corrected_labels[rr[inshape], cc[inshape]] = idx + 1 
                 
     rgb = rgb_from_labels(corrected_labels, list(anno_dict.values()))
-    out_img = overlay_lebels(imarray, rgb, alpha=alpha, show=False)
+    out_img = overlay_labels(imarray, rgb, alpha=alpha, show=False)
     return out_img, corrected_labels
 
 
