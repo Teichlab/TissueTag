@@ -1,43 +1,38 @@
 import base64
+import bokeh
 import json
-import pickle
-import random
-import warnings
-from functools import partial
-from io import BytesIO
-
 import matplotlib
 import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import pickle
+import random
 import scipy
 import seaborn as sns
 import skimage
-from bokeh.models import (FreehandDrawTool, PolyDrawTool, PolyEditTool,
-                          TabPanel, Tabs)
+import warnings
+from bokeh.models import FreehandDrawTool, PolyDrawTool, PolyEditTool, TabPanel, Tabs
 from bokeh.plotting import figure, show
-from PIL import (Image, ImageColor, ImageDraw, ImageEnhance, ImageFilter,
-                 ImageFont)
+from functools import partial
+from io import BytesIO
+from packaging import version
+from PIL import Image, ImageColor, ImageDraw, ImageEnhance, ImageFilter, ImageFont
 from scipy import interpolate
 from scipy.spatial import distance
 from skimage import data, feature, future, segmentation
 from skimage.draw import polygon, disk
 from sklearn.ensemble import RandomForestClassifier
 from tqdm import tqdm
-from packaging import version
-import bokeh
 
 try:
     import scanpy as sc
-except:
+except ImportError:
     print('scanpy is not available')
 
 Image.MAX_IMAGE_PIXELS = None
 
-
 font_path = fm.findfont('DejaVu Sans')
-
 
 def to_base64(img):
     buffered = BytesIO()
@@ -48,102 +43,131 @@ def to_base64(img):
 def create_icon(name, color):
     font_size = 25
     img = Image.new('RGBA', (30, 30), (255, 0, 0, 0))
-    ImageDraw.Draw(img).text((5
-                              , 2), name,fill=tuple((np.array(matplotlib.colors.to_rgb(color))*255).astype(int)),
-                              font=ImageFont.truetype(font_path, font_size))
+    ImageDraw.Draw(img).text((5, 2), name, fill=tuple((np.array(matplotlib.colors.to_rgb(color)) * 255).astype(int)),
+                             font=ImageFont.truetype(font_path, font_size))
     if version.parse(bokeh.__version__) < version.parse("3.1.0"):
         img = to_base64(img)
     return img
 
-
 def read_image(
     path,
-    ppm=None,
-    scale=1,
-    scaleto1ppm=True,
+    ppm_image=None,
+    ppm_out=1,
     contrast_factor=1,
     background_image_path=None,
-  
 ):
     """
-        Read H&E image 
-        Parameters
-        ----------     
-        path 
-            path to image, must follow supported Pillow formats - https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html
-        categorical_covariate_keys
-        scale 
-            a factor to scale down image, if this is applied (any value smaller than 1) a gaussian filter would be applied 
+    Reads an H&E or fluorescent image and returns the image with optional enhancements.
 
+    Parameters
+    ----------
+    path : str
+        Path to the image. The image must be in a format supported by Pillow. Refer to
+        https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html for the list
+        of supported formats.
+    ppm_image : float, optional
+        Pixels per microns of the input image. If not provided, this will be extracted from the image 
+        metadata with info['resolution']. If the metadata is not present, an error will be thrown.
+    ppm_out : float, optional
+        Pixels per microns of the output image. Defaults to 1.
+    contrast_factor : int, optional
+        Factor to adjust contrast for output image, typically between 2-5. Defaults to 1.
+    background_image_path : str, optional
+        Path to a background image. If provided, this image and the input image are combined 
+        to create a virtual H&E (vH&E). If not provided, vH&E will not be performed.
+
+    Returns
+    -------
+    numpy.ndarray
+        The processed image.
+    float
+        The pixels per microns of the input image.
+    float
+        The pixels per microns of the output image.
+
+    Raises
+    ------
+    ValueError
+        If 'ppm_image' is not provided and cannot be extracted from the image metadata.
     """
     
     im = Image.open(path)
-    
-    if scale<1:
-        width, height = im.size
-        newsize = (int(width*scale), int(height*scale))
-        im = im.resize(newsize,Image.Resampling.LANCZOS)
-        if ppm:
-            ppm_out = ppm*scale
-            
-    if scaleto1ppm:
-        if not(ppm):
-            try:
-                ppm = im.info['resolution'][0]
-            except:
-                print('scale to 1 ppm selected, please provide ppm' )
-        ppm_out = 1
-        width, height = im.size
-        newsize = (int(width/ppm), int(height/ppm))
-        im = im.resize(newsize,Image.Resampling.LANCZOS)
-
+    if not(ppm_image):
+        try:
+            ppm_image = im.info['resolution'][0]
+        except:
+            print('could not find ppm in image metadata, please provide ppm value')
+    width, height = im.size
+    newsize = (int(width/ppm_image*ppm_out), int(height/ppm_image*ppm_out))
+    # resize
+    im = im.resize(newsize,Image.Resampling.LANCZOS)
     im = im.convert("RGBA")
+    #increase contrast
     enhancer = ImageEnhance.Contrast(im)
-    factor = contrast_factor #increase contrast
+    factor = contrast_factor 
     im = enhancer.enhance(factor*factor)
     
     if background_image_path:
         im2 = Image.open(background_image_path)
-        im2 = im2.convert("RGBA")
-        enhancer = ImageEnhance.Contrast(im2)
-        factor = contrast_factor #increase contrast
-        im2 = enhancer.enhance(factor*factor)
+        # resize
         im2 = im2.resize(newsize,Image.Resampling.LANCZOS)
         im2 = im2.convert("RGBA")
+        #increase contrast
+        enhancer = ImageEnhance.Contrast(im2)
+        factor = contrast_factor 
+        im2 = enhancer.enhance(factor*factor)
+        # virtual H&E 
+        # im2 = im2.convert("RGBA")
         im = simonson_vHE(np.array(im).astype('uint8'),np.array(im2).astype('uint8'))
         
-    return np.array(im), ppm_out
+    return np.array(im),ppm_image,ppm_out
 
 def read_visium(
-    SpaceRanger_dir_path,
+    spaceranger_dir_path,
     use_resolution='hires',
     res_in_ppm = None,
     fullres_path = None,  
 ):
     """
-        Read 10X visium image data from spaceranger (1.3.0)
-        
-        Parameters
-        ----------     
-        SpaceRanger_dir_path 
-            path to 10X SpaceRanger output folder
-        use_resolution 
-            image resolution to use either 'hires', 'lowres' or 'fullres'
-                            'fullres' is the image that was sent to SpaceRanger (togehter with sequencing data)
-                            if user_resolution == 'fullres' then fullres_path need to be specified
-        fullres_path
-            path to fullres image used for mapping 
-        res_in_ppm
-            when using full resolution used to resize the full image to 0.5 pixels per microns unless stated eitherwise
+    Reads 10X Visium image data from SpaceRanger (v1.3.0).
 
+    Parameters
+    ----------
+    spaceranger_dir_path : str
+        Path to the 10X SpaceRanger output folder.
+    use_resolution : {'hires', 'lowres', 'fullres'}, optional
+        Desired image resolution. 'fullres' refers to the original image that was sent to SpaceRanger 
+        along with sequencing data. If 'fullres' is specified, `fullres_path` must also be provided. 
+        Defaults to 'hires'.
+    res_in_ppm : float, optional
+        Used when working with full resolution images to resize the full image to a specified pixels per 
+        microns. 
+    fullres_path : str, optional
+        Path to the full resolution image used for mapping. This must be specified if `use_resolution` is 
+        set to 'fullres'.
+
+    Returns
+    -------
+    numpy.ndarray
+        The processed image.
+    float
+        The pixels per microns of the image.
+    pandas.DataFrame
+        A DataFrame containing information on the tissue positions.
+
+    Raises
+    ------
+    AssertionError
+        If 'use_resolution' is set to 'fullres' but 'fullres_path' is not specified.
     """
-    spotsize = 55 #um
 
-    scalef = json.load(open(SpaceRanger_dir_path+'spatial/scalefactors_json.json','r'))
+    spotsize = 55 #um spot size of a visium spot
+
+    scalef = json.load(open(spaceranger_dir_path+'spatial/scalefactors_json.json','r'))
     if use_resolution=='fullres':
         assert fullres_path is not None, 'if use_resolution=="fullres" fullres_path has to be specified'
 
-    df = pd.read_csv(SpaceRanger_dir_path+'spatial/tissue_positions_list.csv',header=None)
+    df = pd.read_csv(spaceranger_dir_path+'spatial/tissue_positions_list.csv',header=None)
     df = df.set_index(keys=0)
     df = df[df[1]>0] # in tissue
     
@@ -156,7 +180,7 @@ def read_visium(
         im = Image.open(fullres_path)
         ppm = fullres_ppm
     else:
-        im = Image.open(SpaceRanger_dir_path+'spatial/tissue_'+use_resolution+'_image.png')
+        im = Image.open(spaceranger_dir_path+'spatial/tissue_'+use_resolution+'_image.png')
         ppm = scalef['spot_diameter_fullres']*scalef['tissue_'+use_resolution+'_scalef']/spotsize
         
     
@@ -175,211 +199,255 @@ def read_visium(
     return np.array(im), ppm, df
 
 
-def scribbler(
-    imarray,
-    anno_dict,
-    plot_scale,
-):
+def scribbler(imarray, anno_dict, plot_size=1024):
     """
-        interactive scribble line annotations with Bokeh  
-        
-        Parameters
-        ----------     
-        imarray  
-            image in numpy array format (nparray)
-        anno_dict
-            dictionary of structures to annotate and colors for the structures     
+    Creates interactive scribble line annotations with Bokeh.
 
+    Parameters
+    ----------
+    imarray : np.array
+        Image in numpy array format.
+    anno_dict : dict
+        Dictionary of structures to annotate and colors for the structures.
+    plot_size : int, optional
+        Used to adjust the plotting area size. Default is 1024.
+
+    Returns
+    -------
+    bokeh.plotting.Figure
+        A Bokeh figure with interactive annotations.
+    dict
+        Dictionary of renderers for each annotation.
     """
 
-    imarray_c = imarray.astype('uint8')[:,:].copy()
+    imarray_c = imarray.astype('uint8').copy()
     np_img2d = imarray_c.view("uint32").reshape(imarray_c.shape[:2])
 
-    p =  figure(width=int(imarray_c.shape[1]/3.5*plot_scale),height=int(imarray_c.shape[0]/3.5*plot_scale),match_aspect=True)
-    plotted_image = p.image_rgba(image=[np_img2d], x=0, y=0, dw=imarray_c.shape[1], dh=imarray_c.shape[0])
-    anno_color_map = anno_dict
-    anno_color_map
+    # Create a new bokeh figure
+    p =  figure(width=int(plot_size), height=int(plot_size), match_aspect=True)
+
+    # Add image to the figure
+    p.image_rgba(image=[np_img2d], x=0, y=0, dw=imarray_c.shape[1], dh=imarray_c.shape[0])
+
     render_dict = {}
     draw_tool_dict = {}
-    for l in list(anno_dict.keys()):
-        render_dict[l] = p.multi_line([], [], line_width=5, alpha=0.4, color=anno_color_map[l])
-        draw_tool_dict[l] = FreehandDrawTool(renderers=[render_dict[l]], num_objects=200, icon=create_icon(l[0],anno_color_map[l]))
-        draw_tool_dict[l].description = l
-        p.add_tools(draw_tool_dict[l])
-    
-    
+    for key in anno_dict.keys():
+        render_dict[key] = p.multi_line([], [], line_width=5, alpha=0.4, color=anno_dict[key])
+        draw_tool = FreehandDrawTool(renderers=[render_dict[key]], num_objects=200, icon=create_icon(key[0],anno_dict[key]))
+        draw_tool.description = key
+        p.add_tools(draw_tool)
+        draw_tool_dict[key] = draw_tool
+
     return p, render_dict
 
 
-def annotator(
-    imarray,
-    annotation,
-    anno_dict,
-    fig_downsize_factor = 5,
-    
-):
+
+def annotator(imarray, annotation, anno_dict, plot_size=1024):
     """
-        interactive annotation tool with line annotations using Bokeh tabs for toggling between morphology and annotation. 
-        The principle is that selecting closed/semiclosed shaped that will later be filled accordind to the proper annotation.
-        
-        Parameters
-        ----------     
-        imarray  
-            image in numpy array format (nparray)
-        annotation  
-            label image in numpy array format (nparray)
-        anno_dict
-            dictionary of structures to annotate and colors for the structures             
-        fig_downsize_factor
-            a plotting thing
+    Interactive annotation tool with line annotations using Bokeh tabs for toggling between morphology and annotation.
+    The principle is that selecting closed/semi-closed shapes that will later be filled according to the proper annotation.
 
+    Parameters
+    ----------
+    imarray: np.array
+        Image in numpy array format.
+    annotation: np.array
+        Label image in numpy array format.
+    anno_dict: dict
+        Dictionary of structures to annotate and colors for the structures.
+    plot_size: int, default=1024
+        Figure size for plotting.
+
+    Returns
+    -------
+    Bokeh Tabs object
+        Interactive tabs for annotating image.
+    dict
+        Dictionary of Bokeh renderers for each annotation.
     """
-    
-    # tab1
-    imarray_c = annotation[:,:].copy()
-    np_img2d = imarray_c.view("uint32").reshape(imarray_c.shape[:2])
-    # p = figure(width=int(imarray_c.shape[1]/fig_downsize_factor),height=int(imarray_c.shape[0]/fig_downsize_factor))
-    p = figure(width=int(imarray_c.shape[1]/fig_downsize_factor),height=int(imarray_c.shape[0]/fig_downsize_factor),match_aspect=True)
-    plotted_image = p.image_rgba(image=[np_img2d], x=0, y=0, dw=imarray_c.shape[1], dh=imarray_c.shape[0])
-    tab1 = TabPanel(child=p, title="Annotation")
-
-    # tab2
-    imarray_c = imarray[:,:].copy()
-    np_img2d = imarray_c.view("uint32").reshape(imarray_c.shape[:2])
-    p1 = figure(width=int(imarray_c.shape[1]/fig_downsize_factor),height=int(imarray_c.shape[0]/fig_downsize_factor),match_aspect=True, x_range=p.x_range,y_range=p.y_range)
-    plotted_image = p1.image_rgba(image=[np_img2d], x=0, y=0, dw=imarray_c.shape[1], dh=imarray_c.shape[0])
-    tab2 = TabPanel(child=p1, title="Image")
-
-    # # tab3
-    # imarray_c = result_rgb[:,:].copy()
-    # np_img2d = imarray_c.view("uint32").reshape(imarray_c.shape[:2])
-    # p2 = figure(width=int(imarray_c.shape[1]/fig_downsize_factor),height=int(imarray_c.shape[0]/fig_downsize_factor), x_range=p.x_range,y_range=p.y_range)
-    # plotted_image = p2.image_rgba(image=[np_img2d], x=0, y=0, dw=imarray_c.shape[1], dh=imarray_c.shape[0])
-    # tab3 = TabPanel(child=p2, title="Annotation")
-    anno_color_map = anno_dict
-    anno_color_map
-
-
-    from bokeh.models import ColumnDataSource
+    from bokeh.models import ColumnDataSource, TabPanel, Tabs, FreehandDrawTool
+    from bokeh.plotting import figure
     from bokeh.core.properties import field
 
-    
+    # Tab1
+    imarray_c = annotation.copy()
+    np_img2d = imarray_c.view("uint32").reshape(imarray_c.shape[:2])
+    p = figure(width=plot_size, height=plot_size, match_aspect=True)
+    p.image_rgba(image=[np_img2d], x=0, y=0, dw=imarray_c.shape[1], dh=imarray_c.shape[0])
+    tab1 = TabPanel(child=p, title="Annotation")
 
-    # brushes
+    # Tab2
+    imarray_c = imarray.copy()
+    np_img2d = imarray_c.view("uint32").reshape(imarray_c.shape[:2])
+    p1 = figure(width=plot_size, height=plot_size, match_aspect=True, x_range=p.x_range, y_range=p.y_range)
+    p1.image_rgba(image=[np_img2d], x=0, y=0, dw=imarray_c.shape[1], dh=imarray_c.shape[0])
+    tab2 = TabPanel(child=p1, title="Image")
+
     render_dict = {}
     draw_tool_dict = {}
     source_data_dict = {}
 
-    render_dict_2 = {}
-    draw_tool_dict_2 = {}
-
-    for l in list(anno_dict.keys()):
+    for l in anno_dict.keys():
         draw_source = ColumnDataSource(data=dict(xs=[], ys=[]))
 
-        render_dict[l] = p.multi_line(field("xs"), field("ys"), line_width=3, alpha=0.4, color=anno_color_map[l], source=draw_source)
-        draw_tool_dict[l] = FreehandDrawTool(renderers=[render_dict[l]], num_objects=100, icon=create_icon(l[0],anno_color_map[l]))
+        # For Tab1
+        render_dict[l] = p.multi_line(field("xs"), field("ys"), line_width=3, alpha=0.4, color=anno_dict[l], source=draw_source)
+        draw_tool_dict[l] = FreehandDrawTool(renderers=[render_dict[l]], num_objects=100, icon=create_icon(l[0], anno_dict[l]))
         draw_tool_dict[l].description = l
         p.add_tools(draw_tool_dict[l])
 
-        render_dict_2[l] = p1.multi_line(field("xs"), field("ys"), line_width=3, alpha=0.4, color=anno_color_map[l], source=draw_source)
-        draw_tool_dict_2[l] = FreehandDrawTool(renderers=[render_dict_2[l]], num_objects=100, icon=create_icon(l[0],anno_color_map[l]))
-        draw_tool_dict_2[l].description = l
-        p1.add_tools(draw_tool_dict_2[l])
+        # For Tab2
+        render = p1.multi_line(field("xs"), field("ys"), line_width=3, alpha=0.4, color=anno_dict[l], source=draw_source)
+        draw_tool = FreehandDrawTool(renderers=[render], num_objects=100, icon=create_icon(l[0], anno_dict[l]))
+        draw_tool.description = l
+        p1.add_tools(draw_tool)
 
         source_data_dict[l] = draw_source
 
     tabs = Tabs(tabs=[tab1, tab2])
     return tabs, render_dict
 
+
 def complete_pixel_gaps(x,y):
-    
-    newx1 = []
-    newx2 = []
-    for idx,px in enumerate(x[:-1]):
-        f = interpolate.interp1d(x[idx:idx+2], y[idx:idx+2])
-        gapx1 = np.linspace(x[idx],x[idx+1],num=np.abs(x[idx+1]-x[idx]+1))
-        gapx2 = f(gapx1).astype(int)
-        newx1 = newx1 + list(gapx1[:]) 
-        newx2 = newx2 + list(gapx2[:]) 
-
-    newy1 = []
-    newy2 = []
-    for idx,py in enumerate(y[:-1]):
-        f = interpolate.interp1d(y[idx:idx+2], x[idx:idx+2])
-        gapy1 = np.linspace(y[idx],y[idx+1],num=np.abs(y[idx+1]-y[idx]+1))
-        gapy2 = f(gapy1).astype(int)
-        newy1 = newy1 + list(gapy1[:]) 
-        newy2 = newy2 + list(gapy2[:]) 
-    newx = newx1 + newy2
-    newy = newx2 + newy1
-
-
-    return newx,newy
-
-
-def scribble_to_labels(
-    imarray,
-    render_dict,
-    line_width = 10,
-):
     """
-        extract scribbles to a label image 
-        
-        Parameters
-        ----------     
-        imarray  
-            image in numpy array format (nparray) used to calculate the label image size
-        render_dict
-            Bokeh object carrying annotations 
-        line_width
-            width of the line labels (int)
-
+    Function to complete pixel gaps in a given x, y coordinates
+    
+    Parameters:
+    x : list
+        list of x coordinates
+    y : list
+        list of y coordinates
+    
+    Returns:
+    new_x, new_y : tuple
+        tuple of completed x and y coordinates
     """
     
+    new_x_1 = []
+    new_x_2 = []
+    # iterate over x coordinate values
+    for idx, px in enumerate(x[:-1]):
+        # interpolate between each pair of x points
+        interpolation = interpolate.interp1d(x[idx:idx+2], y[idx:idx+2])
+        interpolated_x_1 = np.linspace(x[idx], x[idx+1], num=np.abs(x[idx+1] - x[idx] + 1))
+        interpolated_x_2 = interpolation(interpolated_x_1).astype(int)
+        # add interpolated values to new x lists
+        new_x_1 += list(interpolated_x_1)
+        new_x_2 += list(interpolated_x_2)
+
+    new_y_1 = []
+    new_y_2 = []
+    # iterate over y coordinate values
+    for idx, py in enumerate(y[:-1]):
+        # interpolate between each pair of y points
+        interpolation = interpolate.interp1d(y[idx:idx+2], x[idx:idx+2])
+        interpolated_y_1 = np.linspace(y[idx], y[idx+1], num=np.abs(y[idx+1] - y[idx] + 1))
+        interpolated_y_2 = interpolation(interpolated_y_1).astype(int)
+        # add interpolated values to new y lists
+        new_y_1 += list(interpolated_y_1)
+        new_y_2 += list(interpolated_y_2)
+    
+    # combine x and y lists
+    new_x = new_x_1 + new_y_2
+    new_y = new_x_2 + new_y_1
+
+    return new_x, new_y
+
+
+
+def scribble_to_labels(imarray, render_dict, line_width=10):
+    """
+    Extract scribbles to a label image.
+    
+    Parameters
+    ----------
+    imarray: np.array
+        Image in numpy array format used to calculate the label image size.
+    render_dict: dict
+        Bokeh object carrying annotations.
+    line_width: int
+        Width of the line labels.
+
+    Returns
+    -------
+    np.array
+        Annotation image.
+    """
     annotations = {}
-    training_labels = np.zeros((imarray.shape[1],imarray.shape[0]), dtype=np.uint8) # blank annotation image
-    # annotations = pd.DataFrame()
-    for idx,a in enumerate(render_dict.keys()):
-        print(a)
+    training_labels = np.zeros((imarray.shape[1], imarray.shape[0]), dtype=np.uint8)
+
+    for idx, a in enumerate(render_dict.keys()):
         xs = []
         ys = []
         annotations[a] = []
+
         for o in range(len(render_dict[a].data_source.data['xs'])):
-            xt,yt = complete_pixel_gaps(np.array(render_dict[a].data_source.data['xs'][o]).astype(int),np.array(render_dict[a].data_source.data['ys'][o]).astype(int))
-            xs = xs + xt
-            ys = ys + yt
-            annotations[a] = annotations[a] + [np.vstack([np.array(render_dict[a].data_source.data['xs'][o]).astype(int),np.array(render_dict[a].data_source.data['ys'][o]).astype(int)])] # to save 
-        # filter point's outside of image 
+            xt, yt = complete_pixel_gaps(
+                np.array(render_dict[a].data_source.data['xs'][o]).astype(int),
+                np.array(render_dict[a].data_source.data['ys'][o]).astype(int)
+            )
+            xs.extend(xt)
+            ys.extend(yt)
+            annotations[a].append(np.vstack([
+                np.array(render_dict[a].data_source.data['xs'][o]).astype(int),
+                np.array(render_dict[a].data_source.data['ys'][o]).astype(int)
+            ]))
+
         xs = np.array(xs)
         ys = np.array(ys)
-        inshape = (xs>0) & (xs<imarray.shape[0]) & (ys>0) & (ys<imarray.shape[1])
+        inshape = (xs > 0) & (xs < imarray.shape[0]) & (ys > 0) & (ys < imarray.shape[1])
         xs = xs[inshape]
         ys = ys[inshape]
         
-        training_labels[np.floor(xs).astype(int),np.floor(ys).astype(int)] = idx+1
+        training_labels[np.floor(xs).astype(int), np.floor(ys).astype(int)] = idx + 1
   
     training_labels = training_labels.transpose()
-    import skimage as sk 
-    return sk.segmentation.expand_labels(training_labels, distance=line_width/2)
+    return skimage.segmentation.expand_labels(training_labels, distance=line_width / 2)
 
 
-def rgb_from_labels(labelimage,colors):
+def rgb_from_labels(labelimage, colors):
+    """
+    Helper function to plot from label images.
+    
+    Parameters
+    ----------
+    labelimage: np.array
+        Label image with pixel values corresponding to labels.
+    colors: list
+        Colors corresponding to pixel values for plotting.
 
-    labelimage_rgb = np.zeros((labelimage.shape[0],labelimage.shape[1] ,4))
+    Returns
+    -------
+    np.array
+        Annotation image.
+    """
+    labelimage_rgb = np.zeros((labelimage.shape[0], labelimage.shape[1], 4))
     
     for c in range(len(colors)):
         color = ImageColor.getcolor(colors[c], "RGB")
-        labelimage_rgb[np.where(labelimage == c+1)[0],np.where(labelimage == c+1)[1],0:3] = np.array(color)
-    labelimage_rgb[:,:,3] = 255
+        labelimage_rgb[labelimage == c + 1, 0:3] = np.array(color)
+
+    labelimage_rgb[:, :, 3] = 255
     return labelimage_rgb.astype('uint8')
 
 
-def sk_rf_classifier(
-    im,
-    training_labels
-    
-):
 
+def sk_rf_classifier(im, training_labels):
+    """
+    A simple random forest pixel classifier from sklearn.
+    
+    Parameters
+    ----------
+    im : array
+        The actual image to predict the labels from, should be the same size as training_labels.
+    training_labels : array
+        Label image with pixel values corresponding to labels.
+
+    Returns
+    -------
+    array
+        Predicted label map.
+    """
 
     sigma_min = 1
     sigma_max = 16
@@ -393,8 +461,27 @@ def sk_rf_classifier(
     clf = future.fit_segmenter(training_labels, features, clf)
     return future.predict_segmenter(features, clf)
 
+def overlay_labels(im1, im2, alpha=0.8, show=True):
+    """
+    Helper function to merge 2 images.
+    
+    Parameters
+    ----------
+    im1 : array
+        1st image.
+    im2 : array
+        2nd image.
+    alpha : float, optional
+        Blending factor, by default 0.8.
+    show : bool, optional
+        If to show the merged plot or not, by default True.
 
-def overlay_lebels(im1,im2,alpha=0.8,show=True):
+    Returns
+    -------
+    array
+        The merged image.
+    """
+
     #generate overlay image
     plt.rcParams["figure.figsize"] = [10, 10]
     plt.rcParams["figure.dpi"] = 100
@@ -405,134 +492,135 @@ def overlay_lebels(im1,im2,alpha=0.8,show=True):
         plt.imshow(out_img,origin='lower')
     return out_img
    
-def update_annotator(
-    imarray,
-    result,
-    anno_dict,
-    render_dict,
-    alpha,
-):
+def update_annotator(imarray, result, anno_dict, render_dict, alpha):
     """
-        updates annotations and generates overly (out_img) and the label image (corrected_labels)
+    Updates annotations and generates overlay (out_img) and the label image (corrected_labels).
         
-        Parameters
-        ----------     
-        imarray  
-            image in numpy array format (nparray)
-        result  
-            label image in numpy array format (nparray)
-        anno_dict
-            dictionary of structures to annotate and colors for the structures     
-        render_dict
-            bokeh data container
-
+    Parameters
+    ----------
+    imarray : numpy.ndarray
+        Image in numpy array format.
+    result : numpy.ndarray
+        Label image in numpy array format.
+    anno_dict : dict
+        Dictionary of structures to annotate and colors for the structures.
+    render_dict : dict
+        Bokeh data container.
+    alpha : float
+        Blending factor.
+        
+    Returns
+    -------
+    tuple
+        Returns the overlay image and corrected labels as a tuple.
     """
-    
     
     corrected_labels = result.copy()
-    # annotations = pd.DataFrame()
-    for idx,a in enumerate(render_dict.keys()):
+    for idx, a in enumerate(render_dict.keys()):
         if render_dict[a].data_source.data['xs']:
             print(a)
             for o in range(len(render_dict[a].data_source.data['xs'])):
                 x = np.array(render_dict[a].data_source.data['xs'][o]).astype(int)
                 y = np.array(render_dict[a].data_source.data['ys'][o]).astype(int)
                 rr, cc = polygon(y, x)
-                inshape = np.where(np.array(result.shape[0]>rr) & np.array(0<rr) & np.array(result.shape[1]>cc) & np.array(0<cc))[0]
-                corrected_labels[rr[inshape], cc[inshape]] = idx+1 
-                # make sure pixels outside the image are ignored
-
-    #generate overlay image
-    rgb = rgb_from_labels(corrected_labels,list(anno_dict.values()))
-    out_img = overlay_lebels(imarray,rgb,alpha=alpha,show=False)
-    # out_img = out_img.transpose() 
+                inshape = np.where(np.array(result.shape[0] > rr) & np.array(0 < rr) & np.array(result.shape[1] > cc) & np.array(0 < cc))[0]
+                corrected_labels[rr[inshape], cc[inshape]] = idx + 1 
+                
+    rgb = rgb_from_labels(corrected_labels, list(anno_dict.values()))
+    out_img = overlay_lebels(imarray, rgb, alpha=alpha, show=False)
     return out_img, corrected_labels
 
 
-def rescale_image(
-    label_image,
-    target_size,
-):
+def rescale_image(label_image, target_size):
     """
-        rescales label image to original image size 
+    Rescales label image to original image size.
         
-        Parameters
-        ----------     
-        label_image  
-            labeled image (nparray)
-        scale  
-            factor to enlarge image
-
+    Parameters
+    ----------
+    label_image : numpy.ndarray
+        Labeled image.
+    target_size : tuple
+        Final dimensions.
+        
+    Returns
+    -------
+    numpy.ndarray
+        Rescaled image.
     """
     imP = Image.fromarray(label_image)
     newsize = (target_size[0], target_size[1])
-    
     return np.array(imP.resize(newsize))
 
 
-def save_annotation(
-    folder,
-    label_image,
-    file_name, 
-    anno_names,
-    anno_colors,
-    ppm
-):
+def save_annotation(folder, label_image, file_name, anno_names, anno_colors, ppm):
     """
-        saves the annotated image as .tif and in addition saves the translation from annotations to labels in a pickle file 
+    Saves the annotated image as .tif and in addition saves the translation 
+    from annotations to labels in a pickle file.
         
-        Parameters
-        ----------     
-        label_image  
-            labeled image (nparray)
-        file_name  
-            name for tif image and pickle
-
+    Parameters
+    ----------
+    folder : str
+        Folder where to save the annotations.
+    label_image : numpy.ndarray
+        Labeled image.
+    file_name : str
+        Name for tif image and pickle.
+    anno_names : list
+        Names of annotated objects.
+    anno_colors : list
+        Colors of annotated objects.
+    ppm : float
+        Pixels per microns.
     """
-
-    label_image = Image.fromarray(label_image)
-    label_image.save(folder+file_name+'.tif')
-    with open(folder+file_name+'.pickle', 'wb') as handle:
-        pickle.dump(dict(zip(range(1,len(anno_names)+1),anno_names)), handle, protocol=pickle.HIGHEST_PROTOCOL)
-    with open(folder+file_name+'colors.pickle', 'wb') as handle:
-        pickle.dump(dict(zip(anno_names,anno_colors)), handle, protocol=pickle.HIGHEST_PROTOCOL)
-    with open(folder+'ppm.pickle', 'wb') as handle:
-        pickle.dump({'ppm':ppm}, handle, protocol=pickle.HIGHEST_PROTOCOL)
-
-def load_annotation(
-    folder,
-    file_name, 
-    load_colors = False,
-):
-    """
-        saves the annotated image as .tif and in addition saves the translation from annotations to labels in a pickle file 
-        
-        Parameters
-        ----------     
-        folder            
-            Folder path for annotations
-        file_name  
-            name for tif image and pickle without extensions
-
-    """
-    imP = Image.open(folder+file_name+'.tif')
     
+    label_image = Image.fromarray(label_image)
+    label_image.save(folder + file_name + '.tif')
+    with open(folder + file_name + '.pickle', 'wb') as handle:
+        pickle.dump(dict(zip(range(1, len(anno_names) + 1), anno_names)), handle, protocol=pickle.HIGHEST_PROTOCOL)
+    with open(folder + file_name + '_colors.pickle', 'wb') as handle:
+        pickle.dump(dict(zip(anno_names, anno_colors)), handle, protocol=pickle.HIGHEST_PROTOCOL)
+    with open(folder + file_name + '_ppm.pickle', 'wb') as handle:
+        pickle.dump({'ppm': ppm}, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+def load_annotation(folder, file_name, load_colors=False):
+    """
+    Loads the annotated image from a .tif file and the translation from annotations 
+    to labels from a pickle file.
+
+    Parameters
+    ----------
+    folder : str
+        Folder path for annotations.
+    file_name : str
+        Name for tif image and pickle without extensions.
+    load_colors : bool, optional
+        If True, get original colors used for annotations. Default is False.
+
+    Returns
+    -------
+    tuple
+        Returns annotation image, annotation order, pixels per microns, and annotation color.
+        If `load_colors` is False, annotation color is not returned.
+    """
+    
+    imP = Image.open(folder + file_name + '.tif')
+
     ppm = imP.info['resolution'][0]
     im = np.array(imP)
-    
 
-    print('loaded annotation image - '+file_name+' size - '+str(im.shape))
-    with open(folder+file_name+'.pickle', 'rb') as handle:
+    print(f'loaded annotation image - {file_name} size - {str(im.shape)}')
+    with open(folder + file_name + '.pickle', 'rb') as handle:
         anno_order = pickle.load(handle)
         print('loaded annotations')        
         print(anno_order)
-    with open(folder+'ppm.pickle', 'rb') as handle:
+    with open(folder + file_name + '_ppm.pickle', 'rb') as handle:
         ppm = pickle.load(handle)
         print('loaded ppm')        
         print(ppm)
         
     if load_colors:
-        with open(folder+file_name+'colors.pickle', 'rb') as handle:
+        with open(folder + file_name + '_colors.pickle', 'rb') as handle:
             anno_color = pickle.load(handle)
             print('loaded color annotations')        
             print(anno_color)
@@ -540,21 +628,32 @@ def load_annotation(
     
     else:
         return im, anno_order, ppm['ppm']
-    
-    
 
-#The following notebook is a series of simple examples of applying the method to data on a 
-#CODEX/Keyence microscrope to produce virtual H&E images using fluorescence data.  If you 
-#find it useful, will you please consider citing the relevant article?:
 
-#Creating virtual H&E images using samples imaged on a commercial CODEX platform
-#Paul D. Simonson, Xiaobing Ren,  Jonathan R. Fromm
-#doi: https://doi.org/10.1101/2021.02.05.21249150
-#Submitted to Journal of Pathology Informatics, December 2020
-def simonson_vHE(
-    dapi_image,
-    eosin_image,
-):
+
+def simonson_vHE(dapi_image, eosin_image):
+    """
+    Create virtual H&E images using DAPI and eosin images.
+    from the developer website:
+    The method is applied to data on a multiplex/Keyence microscope to produce virtual H&E images 
+    using fluorescence data. If you find it useful, consider citing the relevant article:
+    Creating virtual H&E images using samples imaged on a commercial multiplex platform
+    Paul D. Simonson, Xiaobing Ren, Jonathan R. Fromm 
+    doi: https://doi.org/10.1101/2021.02.05.21249150
+
+    Parameters
+    ----------
+    dapi_image : ndarray
+        DAPI image data.
+    eosin_image : ndarray
+        Eosin image data.
+
+    Returns
+    -------
+    ndarray
+        Virtual H&E image.
+    """
+    
     def createVirtualHE(dapi_image, eosin_image, k1, k2, background, beta_DAPI, beta_eosin):
         new_image = np.empty([dapi_image.shape[0], dapi_image.shape[1], 4])
         new_image[:,:,0] = background[0] + (1 - background[0]) * np.exp(- k1 * beta_DAPI[0] * dapi_image - k2 * beta_eosin[0] * eosin_image)
@@ -564,38 +663,38 @@ def simonson_vHE(
         new_image = new_image*255
         return new_image.astype('uint8')
 
-    #Defaults:
     k1 = k2 = 0.001
 
-    background_red = 0.25
-    background_green = 0.25
-    background_blue = 0.25
-    background = [background_red, background_green, background_blue]
+    background = [0.25, 0.25, 0.25]
 
-    beta_DAPI_red = 9.147
-    beta_DAPI_green = 6.9215
-    beta_DAPI_blue = 1.0
-    beta_DAPI = [beta_DAPI_red, beta_DAPI_green, beta_DAPI_blue]
+    beta_DAPI = [9.147, 6.9215, 1.0]
 
-    beta_eosin_red = 0.1
-    beta_eosin_green = 15.8
-    beta_eosin_blue = 0.3
-    beta_eosin = [beta_eosin_red, beta_eosin_green, beta_eosin_blue]
-
+    beta_eosin = [0.1, 15.8, 0.3]
 
     dapi_image = dapi_image[:,:,0]+dapi_image[:,:,1]
     eosin_image = eosin_image[:,:,0]+eosin_image[:,:,1]
 
     print(dapi_image.shape)
-    return createVirtualHE(dapi_image, eosin_image, k1, k2, background=background, beta_DAPI=beta_DAPI, beta_eosin=beta_eosin)
-
-
+    return createVirtualHE(dapi_image, eosin_image, k1, k2, background, beta_DAPI, beta_eosin)
 
 def generate_hires_grid(
     im,
     spot_diameter,
     pixels_per_micron,
 ):
+    """
+        creates an hexagonal grid of a specified size and density 
+        
+        Parameters
+        ----------     
+        im            
+            image to fit the gri on (mostly for dimentions)
+        spot_diameter  
+            in microns - determines the spot size and thus the density of the grid
+        pixels_per_micron  
+            image resolution
+
+    """
     
     helper = spot_diameter*pixels_per_micron
     X1 = np.linspace(helper,im.shape[0]-helper,round(im.shape[0]/helper))
@@ -617,7 +716,8 @@ def grid_anno(
     annotation_image_names,
     annotation_label_list,
     spot_diameter,
-    pixels_per_micron,
+    ppm_in,
+    ppm_out,
     
 ):
     """
@@ -635,13 +735,15 @@ def grid_anno(
             list of dictionaries to convert label data to morphology
         spot_diameter
             same diameter used for grid
-        positions 
-            grid positions
+        ppm_in 
+            pixels per micron for input image
+        ppm_out 
+            used to scale xy grid positions to original image
 
     """
 
-    print('generating grid with spot size - '+str(spot_diameter)+', with resolution of - '+str(pixels_per_micron)+' ppm')
-    positions = generate_hires_grid(im,spot_diameter,pixels_per_micron)
+    print('generating grid with spot size - '+str(spot_diameter)+', with resolution of - '+str(ppm_in)+' ppm')
+    positions = generate_hires_grid(im,spot_diameter,ppm_in)
     positions = positions.astype('float32')
     dim = [im.shape[0],im.shape[1]]
     # transform tissue annotation images to original size
@@ -658,323 +760,292 @@ def grid_anno(
         name = f'{anno=}'.split('=')[0]
         print(annotation_image_names[idx0])
         for idx1,pointcell in tqdm(enumerate(positions.T)):
-            disk = skimage.draw.disk([int(pointcell[1]),int(pointcell[0])],radius)
+            disk = skimage.draw.disk([int(pointcell[1]),int(pointcell[0])],radius,shape=anno_orig.shape)
             anno_dict[idx1] = annotation_label_list[idx0][int(np.median(anno_orig[disk]))]
             number_dict[idx1] = int(np.median(anno_orig[disk]))
         df[annotation_image_names[idx0]] = anno_dict.values()
         df[annotation_image_names[idx0]+'_number'] = number_dict.values()
+    # scale to original image coordinates
+    df['x'] = df['x']*ppm_out/ppm_in
+    df['y'] = df['y']*ppm_out/ppm_in
     df['index'] = df['index'].astype(int)
     df.set_index('index', drop=True, inplace=True)
     return df
 
 
+def dist2cluster(df, annotation, distM, resolution=4, calc_dist=True, logscale=False):
+    """
+    Calculates the minimal Euclidean distance of each point in space to an anatomical structure.
 
-# measure for each spot the mean closest distance to the x closest spoint of a given structure, resolution is x 
-def dist2cluster(
-    df,
-    annotation,
-    distM,
-    resolution=4,
-    calc_dist=True,
-    logscale = False
-):
-    Dist2ClusterAll = {}    
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Dataframe containing spatial data.
+    annotation : str
+        The column in df that contains the structure annotation.
+    distM : ndarray
+        A distance matrix.
+    resolution : int, optional
+        Determines the number of closest points used to calculate the mean distance. Default is 4.
+    calc_dist : bool, optional
+        If true, calculates the distance. Default is True.
+    logscale : bool, optional
+        If true, applies a log10 transformation to the distance. Default is False.
+
+    Returns
+    -------
+    dict
+        Dictionary with the median distance for each category in the annotation column.
+    """
+    
+    Dist2ClusterAll = {}
     categories = np.unique(df[annotation])
-    for idx, c in enumerate(categories): # measure edistange to all
-        indextmp = df[annotation]==c
-        if len(np.where(indextmp)[0])>resolution: # this is an important point to see if there are enough points from a structure to calculate mean distance 
-            print(c)
-            Dist2ClusterAll[c] =  np.median(np.sort(distM[indextmp,:],axis=0)[range(resolution),:],axis=0) # was 12
 
-    # update annotations in AnnData 
+    for idx, c in enumerate(categories):
+        indextmp = df[annotation] == c
+        if len(np.where(indextmp)[0]) > resolution:
+            print(c)
+            Dist2ClusterAll[c] = np.median(np.sort(distM[indextmp, :], axis=0)[range(resolution), :], axis=0)
+
     for c in categories: 
-        if c!='unassigned':
+        if c != 'unassigned':
             if calc_dist:
                 if logscale:
                     df["L2_dist_log10_"+annotation+'_'+c] = np.log10(Dist2ClusterAll[c])
                 else:
                     df["L2_dist_"+annotation+'_'+c] = Dist2ClusterAll[c]
-            df[annotation] = categories[np.argmin(np.array(list(Dist2ClusterAll.values())),axis=0)]
+            df[annotation] = categories[np.argmin(np.array(list(Dist2ClusterAll.values())), axis=0)]
+    
     return Dist2ClusterAll
 
 
-def axis_2p_norm(
-    Dist2ClusterAll,
-    structure_list,
-    weights = [1,1], 
-):
     
-    warnings.filterwarnings("ignore")
-    # CMA calculations 
-    fa = weights[0]
-    fb = weights[0]
-    axis = np.array([( fa*int(a) - fb*int(b) ) / ( fa*int(a) + fb*int(b) ) for a,b in zip(Dist2ClusterAll[structure_list[0]], Dist2ClusterAll[structure_list[1]])])
-    return axis
-
-def bin_axis(
-    ct_order,
-    cutoff_vales,
-    df,
-    axis_anno_name,
-):
-
-    # # manual annotations
-    df['manual_bin_'+axis_anno_name] = 'unassigned'
-    df['manual_bin_'+axis_anno_name] = df['manual_bin_'+axis_anno_name].astype('object')
-    df.loc[np.array(df[axis_anno_name]<cutoff_vales[0]) ,'manual_bin_'+axis_anno_name] = ct_order[0]
-    for idx,r in enumerate(cutoff_vales[:-1]):
-        print(ct_order[idx+1])
-        print(str(cutoff_vales[idx])+','+str(cutoff_vales[idx+1]))
-        df.loc[np.array(df[axis_anno_name]>=cutoff_vales[idx]) & np.array(df[axis_anno_name]<cutoff_vales[idx+1]),'manual_bin_'+axis_anno_name] = ct_order[idx+1]
-
-    df.loc[np.array(df[axis_anno_name]>=cutoff_vales[-1]),'manual_bin_'+axis_anno_name] = ct_order[-1]
-    df['manual_bin_'+axis_anno_name] = df['manual_bin_'+axis_anno_name].astype('category')
-    df['manual_bin_'+axis_anno_name+'_int'] =  df['manual_bin_'+axis_anno_name].cat.codes
-   
-    return df
-
-
-def axis_3p_norm(
-    Dist2ClusterAll,
-    structure_list,
-    df,
-    axis_anno='cma_v3',
-):
-    df[axis_anno] = np.zeros(df.shape[0])
-    counter = -1
-    for b,c,a in zip(Dist2ClusterAll[structure_list[0]], Dist2ClusterAll[structure_list[1]],Dist2ClusterAll[structure_list[2]]):
-        counter = counter+1
-        if (b>=c): # meaning you are in the medulla 
-            df[axis_anno].iloc[counter] = (int(b)-int(c))/(int(c)+int(b)) # non linear normalized distance between cortex with medulla for edge effect modulation 
-        if (b<c): # meaning you are in the cortex 
-            df[axis_anno].iloc[counter] = (int(a)-int(c)+0.5*int(b))/(int(a)+int(c)+0.5*int(b))-1 # shifted non linear distance between edge and medualla 
-    return df 
-
+def anno_to_cells(df_cells, x_col, y_col, df_grid, annotation='annotations', plot=True):
+    """
+    Maps tissue annotations to segmented cells by nearest neighbors.
     
-def anno_to_cells(
-    df_cells,
-    df_morphology,
-    numerical_annotations, 
-    categorical_annotation_names, 
-    categorical_annotation_number_names, 
-):
+    Parameters
+    ----------
+    df_cells : pandas.DataFrame
+        Dataframe with cell data.
+    x_col : str
+        Name of column with x coordinates in df_cells.
+    y_col : str
+        Name of column with y coordinates in df_cells.
+    df_grid : pandas.DataFrame
+        Dataframe with grid data.
+    annotation : str, optional
+        Name of the column with annotations in df_grid. Default is 'annotations'.
+    plot : bool, optional
+        If true, plots the coordinates of the grid space and the cell space to make sure 
+        they are aligned. Default is True.
+
+    Returns
+    -------
+    df_cells : pandas.DataFrame
+        Updated dataframe with cell data.
+    """
     
-    print('make sure the coordinate systems are alligned e.g. axes are not flipped') 
-    a = np.vstack([df_morphology['x'],df_morphology['y']])
-    b = np.vstack([df_cells['centroid-1'],df_cells['centroid-0']])
-    # xi = np.vstack([dfseg['centroid-1'],dfseg['centroid-0']]).T
-    plt.figure(dpi=100, figsize=[10,10])
-    plt.title('cell space')
-    plt.plot(b[0],b[1],'.', markersize=1)
-    plt.show()
-    plt.figure(dpi=100, figsize=[10,10])
-    plt.plot(a[0],a[1],'.', markersize=1)
-    plt.title('morpho spcae')
-    plt.show()
-
-
-    # migrate continues annotations
-    xi = np.vstack([df_cells['centroid-1'],df_cells['centroid-0']]).T
-    for k in numerical_annotations:
-        print('migrating - '+k+' to segmentations')
-        df_cells[k] = scipy.interpolate.griddata(points=a.T, values = df_morphology[k], xi=b.T,method='cubic')
-        # plt.title(k)
-        # df_cells[k].hist(bins=5)
-        # plt.show()
-
-    # migrate categorial annotations
-    for idx,k in enumerate(categorical_annotation_names):
-        df_cells[categorical_annotation_number_names[idx]] = scipy.interpolate.griddata(points=a.T, values = df_morphology[categorical_annotation_number_names[idx]], xi=b.T,method='nearest')
-        dict_temp = dict(zip(df_morphology[categorical_annotation_number_names[idx]].value_counts().keys(),df_morphology[k].value_counts().keys()))
-        print('migrating - '+k+' to segmentations')
-        df_cells[k] = df_cells[categorical_annotation_number_names[idx]].map(dict_temp)
-        print(df_cells[k].value_counts())
+    print('make sure the coordinate systems are aligned e.g. axes are not flipped') 
+    a = np.vstack([df_grid['x'], df_grid['y']])
+    b = np.vstack([df_cells[x_col], df_cells[y_col]])
+    
+    if plot:
+        plt.figure(dpi=100, figsize=[10, 10])
+        plt.title('cell space')
+        plt.plot(b[0], b[1], '.', markersize=1)
+        plt.show()
         
+        df_grid_temp = df_grid.iloc[np.where(df_grid[annotation] != 'unassigned')[0], :].copy()
+        aa = np.vstack([df_grid_temp['x'], df_grid_temp['y']])
+        plt.figure(dpi=100, figsize=[10, 10])
+        plt.plot(aa[0], aa[1], '.', markersize=1)
+        plt.title('annotation space')
+        plt.show()
+    
+    annotations = df_grid.columns[~df_grid.columns.isin(['x', 'y'])]
+    
+    for k in annotations:
+        print('migrating - ' + k + ' to segmentations')
+        df_cells[k] = scipy.interpolate.griddata(points=a.T, values=df_grid[k], xi=b.T, method='nearest')
+  
     return df_cells
 
 
-def anno_to_visium_spots(
-    df_spots,
-    df_grid,
-):
+def anno_to_visium_spots(df_spots, df_grid, plot=True):
+    """
+    Maps tissue annotations to Visium spots according to the nearest neighbors.
     
-    print('make sure the coordinate systems are alligned e.g. axes are not flipped') 
-    a = np.vstack([df_grid['x'],df_grid['y']])
-    b = np.vstack([df_spots[5],df_spots[4]])
-    plt.figure(dpi=100, figsize=[10,10])
-    plt.title('spot space')
-    plt.plot(b[0],b[1],'.', markersize=1)
-    plt.show()
-    plt.figure(dpi=100, figsize=[10,10])
-    plt.plot(a[0],a[1],'.', markersize=1)
-    plt.title('morpho spcae')
-    plt.show()
-    annotations = df_grid.columns[~df_grid.columns.isin(['x','y'])]
-    import scipy
-    # migrate continues annotations
-    for k in annotations:
-        print('migrating - '+k+' to segmentations')
-        df_spots[k] = scipy.interpolate.griddata(points=a.T, values = df_grid[k], xi=b.T,method='nearest')
-  
+    Parameters
+    ----------
+    df_spots : pandas.DataFrame
+        Dataframe with Visium spot data.
+    df_grid : pandas.DataFrame
+        Dataframe with grid data.
+    plot : bool, optional
+        If true, plots the coordinates of the grid space and the spot space to make sure 
+        they are aligned. Default is True.
+
+    Returns
+    -------
+    df_spots : pandas.DataFrame
+        Updated dataframe with Visium spot data.
+    """
+    
+    print('Make sure the coordinate systems are aligned, e.g., axes are not flipped.') 
+    a = np.vstack([df_grid['x'], df_grid['y']])
+    b = np.vstack([df_spots[5], df_spots[4]])
+    
+    if plot:
+        plt.figure(dpi=100, figsize=[10, 10])
+        plt.title('Spot space')
+        plt.plot(b[0], b[1], '.', markersize=1)
+        plt.show()
         
+        plt.figure(dpi=100, figsize=[10, 10])
+        plt.plot(a[0], a[1], '.', markersize=1)
+        plt.title('Morpho space')
+        plt.show()
+    
+    annotations = df_grid.columns[~df_grid.columns.isin(['x', 'y'])]
+    
+    for k in annotations:
+        print('Migrating - ' + k + ' to segmentations.')
+        df_spots[k] = scipy.interpolate.griddata(points=a.T, values=df_grid[k], xi=b.T, method='nearest')
+  
     return df_spots
 
 
-# def anno_to_visium_spots(
-#     df_vis,
-#     df_morphology,
-#     numerical_annotations, 
-#     categorical_annotation_names, 
-#     categorical_annotation_number_names, 
-# ):
-    
-#     print('make sure the coordinate systems are alligned e.g. axes are not flipped') 
-#     a = np.vstack([df_morphology['x'],df_morphology['y']])
-#     b = np.vstack([df_vis[5],df_vis[4]])
-#     # xi = np.vstack([dfseg['centroid-1'],dfseg['centroid-0']]).T
-#     plt.figure(dpi=100, figsize=[10,10])
-#     plt.title('visium space')
-#     plt.plot(b[0],b[1],'.', markersize=1)
-#     plt.show()
-#     plt.figure(dpi=100, figsize=[10,10])
-#     plt.plot(a[0],a[1],'.', markersize=1)
-#     plt.title('morpho spcae')
-#     plt.show()
+def plot_grid(df, annotation, spotsize=10, save=False, dpi=100, figsize=(5,5), savepath=None):
+    """
+    Plots a grid.
 
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Dataframe containing data to be plotted.
+    annotation : str
+        Annotation to be used in the plot.
+    spotsize : int, optional
+        Size of the spots in the plot. Default is 10.
+    save : bool, optional
+        If true, saves the plot. Default is False.
+    dpi : int, optional
+        Dots per inch for the plot. Default is 100.
+    figsize : tuple, optional
+        Size of the figure. Default is (5,5).
+    savepath : str, optional
+        Path to save the plot. Default is None.
 
+    Returns
+    -------
+    None
+    """
 
-#     # migrate continues annotations
-#     xi = np.vstack([df_vis[5],df_vis[4]]).T
-#     for k in numerical_annotations:
-#         print('migrating - '+k+' to spots')
-#         df_vis[k] = scipy.interpolate.griddata(points=a.T, values = df_morphology[k], xi=b.T,method='cubic')
-#         # plt.title(k)
-#         # df_vis[k].hist(bins=5)
-#         # plt.show()
-
-#     # migrate categorial annotations
-#     for idx,k in enumerate(categorical_annotation_names):
-#         df_vis[categorical_annotation_number_names[idx]] = scipy.interpolate.griddata(points=a.T, values = df_morphology[categorical_annotation_number_names[idx]], xi=b.T,method='nearest')
-#         dict_temp = dict(zip(df_morphology[categorical_annotation_number_names[idx]].value_counts().keys(),df_morphology[k].value_counts().keys()))
-#         print('migrating - '+k+' to spots')
-#         df_vis[k] = df_vis[categorical_annotation_number_names[idx]].map(dict_temp)
-#         print(df_vis[k].value_counts())
-        
-#     return df_vis
-
-
-def plot_grid(
-    df,
-    annotation,
-    spotsize=10,
-    save=False,
-    dpi=100,
-    figsize=[5,5],
-    savepath = None,
-    
-):   
-    
     plt.figure(dpi=dpi, figsize=figsize)
-    
-    ct_order = list((df[annotation].value_counts()>0).keys())
+
+    ct_order = list((df[annotation].value_counts() > 0).keys())
     ct_color_map = dict(zip(ct_order, np.array(sns.color_palette("colorblind", len(ct_order)))[range(len(ct_order))]))
-    sns.scatterplot(x='x',y='y',hue=annotation,s=spotsize,data = df,palette=ct_color_map,hue_order=ct_order)
+
+    sns.scatterplot(x='x', y='y', hue=annotation, s=spotsize, data=df, palette=ct_color_map, hue_order=ct_order)
+
     plt.grid(False)
     plt.title(annotation)
     plt.axis('equal')
+
     if save:
-        plt.savefig(savepath+'/'+tr(annotation)+'.pdf')  
+        if savepath is None:
+            raise ValueError('The savepath must be specified if save is True.')
+
+        plt.savefig(savepath + '/' + annotation.replace(" ", "_") + '.pdf')
+
     plt.show()
 
     
-    
-    
-    
-def poly_annotator(
-    imarray,
-    annotation,
-    anno_dict,
-    fig_downsize_factor = 5,
-    
-):
+def poly_annotator(imarray, annotation, anno_dict, fig_screen_size=1024):
     """
-        interactive annotation tool with line annotations using Bokeh tabs for toggling between morphology and annotation. 
-        The principle is that selecting closed/semiclosed shaped that will later be filled accordind to the proper annotation.
-        
-        Parameters
-        ----------     
-        imarray  
-            image in numpy array format (nparray)
-        annotation  
-            label image in numpy array format (nparray)
-        anno_dict
-            dictionary of structures to annotate and colors for the structures             
-        fig_downsize_factor
-            a plotting thing
+    Interactive annotation tool with line annotations using Bokeh tabs for toggling between morphology and annotation.
+    The principle is that selecting closed/semiclosed shaped that will later be filled according to the proper annotation.
 
+    Parameters
+    ----------
+    imarray : numpy.ndarray
+        Image in numpy array format.
+    annotation : numpy.ndarray
+        Label image in numpy array format.
+    anno_dict : dict
+        Dictionary of structures to annotate and colors for the structures.
+    fig_screen_size : int, optional
+        Plotting area size. Default is 1024.
+
+    Returns
+    -------
+    bokeh.models.widgets.tabs.Tabs
+        Bokeh tabs containing the annotation and image panels.
+    dict
+        Dictionary containing the Bokeh renderers for the annotation lines.
     """
-    
 
-
-    # tab1
-    imarray_c = annotation[:,:].copy()
+    # Tab1
+    imarray_c = annotation[:, :].copy()
     np_img2d = imarray_c.view("uint32").reshape(imarray_c.shape[:2])
-    # p = figure(width=int(imarray_c.shape[1]/fig_downsize_factor),height=int(imarray_c.shape[0]/fig_downsize_factor))
-    p = figure(width=int(imarray_c.shape[1]/fig_downsize_factor),height=int(imarray_c.shape[0]/fig_downsize_factor),match_aspect=True)
+    p = figure(width=int(fig_screen_size), height=int(fig_screen_size), match_aspect=True)
     plotted_image = p.image_rgba(image=[np_img2d], x=0, y=0, dw=imarray_c.shape[1], dh=imarray_c.shape[0])
     tab1 = TabPanel(child=p, title="Annotation")
 
-    # tab2
-    imarray_c = imarray[:,:].copy()
+    # Tab2
+    imarray_c = imarray[:, :].copy()
     np_img2d = imarray_c.view("uint32").reshape(imarray_c.shape[:2])
-    p1 = figure(width=int(imarray_c.shape[1]/fig_downsize_factor),height=int(imarray_c.shape[0]/fig_downsize_factor),match_aspect=True, x_range=p.x_range,y_range=p.y_range)
+    p1 = figure(width=int(fig_screen_size), height=int(fig_screen_size), match_aspect=True, x_range=p.x_range, y_range=p.y_range)
     plotted_image = p1.image_rgba(image=[np_img2d], x=0, y=0, dw=imarray_c.shape[1], dh=imarray_c.shape[0])
     tab2 = TabPanel(child=p1, title="Image")
 
-
     anno_color_map = anno_dict
-    anno_color_map
 
-    # brushes
+    # Brushes
     render_dict = {}
-    polt_tool_dict = {}
+    plot_tool_dict = {}
     for l in list(anno_dict.keys()):
-        render_dict[l] = p.multi_line([], [], line_width=5, alpha=0.4, color=anno_color_map[l])
-        polt_tool_dict[l] = PolyDrawTool(renderers=[render_dict[l]], num_objects=100, icon=create_icon(l[0],anno_color_map[l]))
-        polt_tool_dict[l].description = l
-        p.add_tools(polt_tool_dict[l])
+        render_dict[l] = p.multi_line([], [], line_width=3, alpha=0.6, color=anno_color_map[l])
+        plot_tool_dict[l] = PolyDrawTool(renderers=[render_dict[l]], num_objects=300, icon=create_icon(l[0], anno_color_map[l]))
+        plot_tool_dict[l].description = l
+        p.add_tools(plot_tool_dict[l])
 
     tabs = Tabs(tabs=[tab1, tab2])
     return tabs, render_dict
 
-def object_annotator(
-    imarray,
-    result,
-    anno_dict,
-    render_dict,
-    alpha,
-    ):
+
+def object_annotator(imarray, result, anno_dict, render_dict, alpha):
     """
-        extracts annotations and lables them according to bruch strokes while generating (out_img) and the label image (corrected_labels) and the anno_dict object 
-        
-        Parameters
-        ----------     
-        imarray  
-            image in numpy array format (nparray)
-        result  
-            label image in numpy array format (nparray)
-        anno_dict
-            dictionary of structures to annotate and colors for the structures     
-        render_dict
-            bokeh data container
+    Extracts annotations and labels them according to brush strokes while generating out_img and the label image corrected_labels, and the anno_dict object.
 
+    Parameters
+    ----------
+    imarray : numpy.ndarray
+        Image in numpy array format.
+    result : numpy.ndarray
+        Label image in numpy array format.
+    anno_dict : dict
+        Dictionary of structures to annotate and colors for the structures.
+    render_dict : dict
+        Bokeh data container.
+    alpha : float
+        Blending factor.
+
+    Returns
+    -------
+    numpy.ndarray
+        Corrected label image.
+    dict
+        Dictionary containing the object colors.
     """
-    colorpool = ['yellow','green','cyan','brown','magenta','blue','red','orange']
 
+    colorpool = ['green', 'cyan', 'brown', 'magenta', 'blue', 'red', 'orange']
 
+    result[:] = 1
     corrected_labels = result.copy()
-    # annotations = pd.DataFrame()
-    object_dict = {}
+    object_dict = {'unassigned': 'yellow'}
+
     for idx,a in enumerate(render_dict.keys()):
         if render_dict[a].data_source.data['xs']:
             print(a)
@@ -983,59 +1054,158 @@ def object_annotator(
                 y = np.array(render_dict[a].data_source.data['ys'][o]).astype(int)
                 rr, cc = polygon(y, x)
                 inshape = (result.shape[0]>rr) & (0<rr) & (result.shape[1]>cc) & (0<cc)         # make sure pixels outside the image are ignored
-                corrected_labels[rr[inshape], cc[inshape]] = o+1
+                corrected_labels[rr[inshape], cc[inshape]] = o+2
                 object_dict[a+'_'+str(o)] = random.choice(colorpool)
 
-    #generate overlay image
-    rgb = rgb_from_labels(corrected_labels,list(object_dict.values()))
-    out_img = overlay_lebels(imarray,rgb,alpha=alpha,show=False)
-    # out_img = out_img.transpose() 
-    return out_img, corrected_labels, object_dict
-  
-def gene_labels(adata,df,training_labels,marker_dict,annodict,r,labels_per_marker):
+    return corrected_labels, object_dict
+
+
+def gene_labels(adata, df, training_labels, marker_dict, annodict, r, labels_per_marker):
+    """
+    Assign labels to training spots based on gene expression.
+
+    Parameters
+    ----------
+    adata : scanpy.AnnData
+        Annotated data matrix.
+    df : pandas.DataFrame
+        DataFrame containing spot coordinates.
+    training_labels : numpy.ndarray
+        Array for storing the training labels.
+    marker_dict : dict
+        Dictionary mapping markers to genes.
+    annodict : dict
+        Dictionary mapping markers to annotation names.
+    r : float
+        Radius of the spots.
+    labels_per_marker : dict
+        Dictionary mapping markers to the number of labels per marker.
+
+    Returns
+    -------
+    numpy.ndarray
+        Array containing the training labels.
+    """
+
     import scanpy
-    for m in list(marker_dict.keys()): 
+
+    for m in list(marker_dict.keys()):
         print(marker_dict[m])
         GeneIndex = np.where(adata.var_names.str.fullmatch(marker_dict[m]))[0]
         scanpy.pp.normalize_total(adata)
-        GeneData = adata.X[:,GeneIndex].todense()
-        SortedExp = np.argsort(GeneData,axis=0)[::-1]
+        GeneData = adata.X[:, GeneIndex].todense()
+        SortedExp = np.argsort(GeneData, axis=0)[::-1]
         list_gene = adata.obs.index[np.squeeze(SortedExp[range(labels_per_marker[m])])][0]
-        for idx,sub in enumerate(list(annodict.keys())):
+        for idx, sub in enumerate(list(annodict.keys())):
             if sub == m:
                 back = idx
-        for coor in df.loc[list_gene,4:5].to_numpy():
-            training_labels[disk((coor[0],coor[1]),r)] = back+1
+        for coor in df.loc[list_gene, 4:5].to_numpy():
+            training_labels[disk((coor[0], coor[1]), r)] = back + 1
     return training_labels
 
-def background_labels(shape,coordinates,r,every_x_spots=10,label=1):
+
+def background_labels(shape, coordinates, r, every_x_spots=10, label=1):
+    """
+    Generate background labels.
+
+    Parameters
+    ----------
+    shape : tuple
+        Shape of the training labels array.
+    coordinates : numpy.ndarray
+        Array containing the coordinates of the spots.
+    r : float
+        Radius of the spots.
+    every_x_spots : int, optional
+        Spacing between background spots. Default is 10.
+    label : int, optional
+        Label value for background spots. Default is 1.
+
+    Returns
+    -------
+    numpy.ndarray
+        Array containing the background labels.
+    """
+
     training_labels = np.zeros(shape, dtype=np.uint8)
-    Xmin = np.min(coordinates[:,0])
-    Xmax = np.max(coordinates[:,0])
-    Ymin = np.min(coordinates[:,1])
-    Ymax = np.max(coordinates[:,1])
-    grid = hexagonal_grid(r,shape) # generate a grid over the entire image 
+    Xmin = np.min(coordinates[:, 0])
+    Xmax = np.max(coordinates[:, 0])
+    Ymin = np.min(coordinates[:, 1])
+    Ymax = np.max(coordinates[:, 1])
+    grid = hexagonal_grid(r, shape)
     grid = grid.T
-    grid = grid[::every_x_spots,:]
+    grid = grid[::every_x_spots, :]
+
     for coor in grid:
-        training_labels[disk((coor[1],coor[0]),r)] = label
+        training_labels[disk((coor[1], coor[0]), r)] = label
+
     for coor in coordinates.T:
-        training_labels[disk((coor[1],coor[0]),r*4)] = 0
-    
-    # training_labels[int(Ymin):int(Ymax),int(Xmin):int(Xmax)] = 0 # remove spots from tisue area
+        training_labels[disk((coor[1], coor[0]), r * 4)] = 0
+
     return training_labels
 
-def hexagonal_grid(SpotSize,shape):
+
+def hexagonal_grid(SpotSize, shape):
+    """
+    Generate a hexagonal grid.
+
+    Parameters
+    ----------
+    SpotSize : float
+        Size of the spots.
+    shape : tuple
+        Shape of the grid.
+
+    Returns
+    -------
+    numpy.ndarray
+        Array containing the coordinates of the grid.
+    """
+
     helper = SpotSize
-    X1 = np.linspace(helper,shape[0]-helper,round(shape[0]/helper))
-    Y1 = np.linspace(helper,shape[1]-2*helper,round(shape[1]/(2*helper)))
-    X2 = X1 + SpotSize/2
+    X1 = np.linspace(helper, shape[0] - helper, round(shape[0] / helper))
+    Y1 = np.linspace(helper, shape[1] - 2 * helper, round(shape[1] / (2 * helper)))
+    X2 = X1 + SpotSize / 2
     Y2 = Y1 + helper
-    Gx1, Gy1 = np.meshgrid(X1,Y1)
-    Gx2, Gy2 = np.meshgrid(X2,Y2)
+    Gx1, Gy1 = np.meshgrid(X1, Y1)
+    Gx2, Gy2 = np.meshgrid(X2, Y2)
     positions1 = np.vstack([Gy1.ravel(), Gx1.ravel()])
     positions2 = np.vstack([Gy2.ravel(), Gx2.ravel()])
-    positions = np.hstack([positions1,positions2])
+    positions = np.hstack([positions1, positions2])
     return positions
 
 
+def overlay_labels(im1, im2, alpha=0.8, show=True):
+    """
+    Merge two images using alpha blending.
+
+    Parameters
+    ----------
+    im1 : numpy.ndarray
+        First image.
+    im2 : numpy.ndarray
+        Second image.
+    alpha : float, optional
+        Blending factor. Default is 0.8.
+    show : bool, optional
+        Whether to show the merged plot or not. Default is True.
+
+    Returns
+    -------
+    numpy.ndarray
+        Merged image.
+    """
+
+    import matplotlib.pyplot as plt
+
+    plt.rcParams["figure.figsize"] = [10, 10]
+    plt.rcParams["figure.dpi"] = 100
+
+    out_img = np.zeros(im1.shape, dtype=im1.dtype)
+    out_img[:, :, :] = (alpha * im1[:, :, :]) + ((1 - alpha) * im2[:, :, :])
+    out_img[:, :, 3] = 255
+
+    if show:
+        plt.imshow(out_img, origin='lower')
+
+    return out_img
