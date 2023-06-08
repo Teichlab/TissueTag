@@ -46,7 +46,7 @@ say 'y' when asked
 `pip install bokeh` 
 
 8)
-'pip install scikit-image'
+`pip install scikit-image`
 
 
 9) add the new enviroment to jupyter lab path  
