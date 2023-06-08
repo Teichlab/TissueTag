@@ -45,8 +45,11 @@ say 'y' when asked
 `pip install jupyter_bokeh`
 `pip install bokeh` 
 
+8)
+'pip install scikit-image'
 
-8) add the new enviroment to jupyter lab path  
+
+9) add the new enviroment to jupyter lab path  
 $ ipython kernel install --name imagespot --user
 
 
