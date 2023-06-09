@@ -128,6 +128,7 @@ def read_visium(
     res_in_ppm = None,
     fullres_path = None,
     header = None,
+    plot = True,
 ):
     """
     Reads 10X Visium image data from SpaceRanger (v1.3.0).
@@ -148,6 +149,8 @@ def read_visium(
         set to 'fullres'.
     header : int, optional (defa
         newer SpaceRanger could need this to be set as 0. Default is None. 
+    plot : Boolean 
+        if to plot the visium object to scale
 
     Returns
     -------
@@ -202,11 +205,18 @@ def read_visium(
         ppm = res_in_ppm
     
     # translate from mu to pixel
-    df['pxl_col_in_fullres'] = df['pxl_col_in_fullres']*ppm
-    df['pxl_row_in_fullres'] = df['pxl_row_in_fullres']*ppm
+    df['pxl_col'] = df['pxl_col_in_fullres']*ppm
+    df['pxl_row'] = df['pxl_row_in_fullres']*ppm
     
 
     im = im.convert("RGBA")
+
+    if plot:
+        coordinates = np.vstack((df['pxl_col'],df['pxl_row']))
+        plt.imshow(im,origin='lower')
+        plt.plot(coordinates[0,:],coordinates[1,:],'.')
+        plt.title( 'ppm - '+str(ppm))
+    
     return np.array(im), ppm, df
 
 
@@ -253,7 +263,7 @@ def scribbler(imarray, anno_dict, plot_size=1024):
 
 
 
-def annotator(imarray, annotation, anno_dict, plot_size=1024):
+def annotator(imarray, annotation, anno_dict, plot_size=1024,invert_y=False):
     """
     Interactive annotation tool with line annotations using Bokeh tabs for toggling between morphology and annotation.
     The principle is that selecting closed/semi-closed shapes that will later be filled according to the proper annotation.
@@ -268,6 +278,8 @@ def annotator(imarray, annotation, anno_dict, plot_size=1024):
         Dictionary of structures to annotate and colors for the structures.
     plot_size: int, default=1024
         Figure size for plotting.
+    invert_y :boolean
+        invert plot along y axis
 
     Returns
     -------
@@ -284,6 +296,7 @@ def annotator(imarray, annotation, anno_dict, plot_size=1024):
     imarray_c = annotation.copy()
     np_img2d = imarray_c.view("uint32").reshape(imarray_c.shape[:2])
     p = figure(width=plot_size, height=plot_size, match_aspect=True)
+    p.quad(top=e[1:], bottom=e[:-1], left=0, right=h) if invert_y else None
     p.image_rgba(image=[np_img2d], x=0, y=0, dw=imarray_c.shape[1], dh=imarray_c.shape[0])
     tab1 = TabPanel(child=p, title="Annotation")
 
@@ -291,6 +304,7 @@ def annotator(imarray, annotation, anno_dict, plot_size=1024):
     imarray_c = imarray.copy()
     np_img2d = imarray_c.view("uint32").reshape(imarray_c.shape[:2])
     p1 = figure(width=plot_size, height=plot_size, match_aspect=True, x_range=p.x_range, y_range=p.y_range)
+    p1.quad(top=e[1:], bottom=e[:-1], left=0, right=h) if invert_y else None
     p1.image_rgba(image=[np_img2d], x=0, y=0, dw=imarray_c.shape[1], dh=imarray_c.shape[0])
     tab2 = TabPanel(child=p1, title="Image")
 
@@ -783,7 +797,7 @@ def grid_anno(
     return df
 
 
-def dist2cluster(df, annotation, distM, resolution=4, calc_dist=True, logscale=False):
+def dist2cluster(df, annotation, ppm, KNN=4, calc_dist=True, logscale=False):
     """
     Calculates the minimal Euclidean distance of each point in space to an anatomical structure.
 
@@ -793,14 +807,15 @@ def dist2cluster(df, annotation, distM, resolution=4, calc_dist=True, logscale=F
         Dataframe containing spatial data.
     annotation : str
         The column in df that contains the structure annotation.
-    distM : ndarray
-        A distance matrix.
-    resolution : int, optional
+    ppm : float
+        the coordinates of df in pixel scale
+    KNN : int, optional
         Determines the number of closest points used to calculate the mean distance. Default is 4.
     calc_dist : bool, optional
         If true, calculates the distance. Default is True.
     logscale : bool, optional
         If true, applies a log10 transformation to the distance. Default is False.
+    
 
     Returns
     -------
@@ -808,23 +823,27 @@ def dist2cluster(df, annotation, distM, resolution=4, calc_dist=True, logscale=F
         Dictionary with the median distance for each category in the annotation column.
     """
     pd.options.mode.chained_assignment = None  # default='warn'
+    from scipy.spatial import distance_matrix, distance
+    print('calculating distance matrix')
+    a = np.vstack([df['x'],df['y']]).astype(int)
+    distM = distance.cdist(a.T,a.T, metric='euclidean')
 
     Dist2ClusterAll = {}
     categories = np.unique(df[annotation])
 
     for idx, c in enumerate(categories):
         indextmp = df[annotation] == c
-        if len(np.where(indextmp)[0]) > resolution:
+        if len(np.where(indextmp)[0]) > KNN:
             print(c)
-            Dist2ClusterAll[c] = np.median(np.sort(distM[indextmp, :], axis=0)[range(resolution), :], axis=0)
+            Dist2ClusterAll[c] = np.median(np.sort(distM[indextmp, :], axis=0)[range(KNN), :], axis=0)
 
     for c in categories: 
         if c != 'unassigned':
             if calc_dist:
                 if logscale:
-                    df["L2_dist_log10_"+annotation+'_'+c] = np.log10(Dist2ClusterAll[c])
+                    df["L2_dist_log10_"+annotation+'_'+c] = np.log10(Dist2ClusterAll[c]/ppm)
                 else:
-                    df["L2_dist_"+annotation+'_'+c] = Dist2ClusterAll[c]
+                    df["L2_dist_"+annotation+'_'+c] = Dist2ClusterAll[c]/ppm
             df[annotation] = categories[np.argmin(np.array(list(Dist2ClusterAll.values())), axis=0)]
     
     return Dist2ClusterAll
@@ -883,7 +902,7 @@ def anno_to_cells(df_cells, x_col, y_col, df_grid, annotation='annotations', plo
     return df_cells
 
 
-def anno_to_visium_spots(df_spots, df_grid, plot=True,how='nearest',max_distance=10e10):
+def anno_to_visium_spots(df_spots, df_grid, ppm, plot=True,how='nearest',max_distance=10e10):
     """
     Maps tissue annotations to Visium spots according to the nearest neighbors.
     
@@ -893,6 +912,8 @@ def anno_to_visium_spots(df_spots, df_grid, plot=True,how='nearest',max_distance
         Dataframe with Visium spot data.
     df_grid : pandas.DataFrame
         Dataframe with grid data.
+    ppm : float 
+        scale of annotation vs visium
     plot : bool, optional
         If true, plots the coordinates of the grid space and the spot space to make sure 
         they are aligned. Default is True.
@@ -912,7 +933,7 @@ def anno_to_visium_spots(df_spots, df_grid, plot=True,how='nearest',max_distance
     
     print('Make sure the coordinate systems are aligned, e.g., axes are not flipped.') 
     a = np.vstack([df_grid['x'], df_grid['y']])
-    b = np.vstack([df_spots['pxl_col_in_fullres'], df_spots['pxl_row_in_fullres']])
+    b = np.vstack([df_spots['pxl_col_in_fullres'], df_spots['pxl_row_in_fullres']])*ppm
     
     if plot:
         plt.figure(dpi=100, figsize=[10, 10])
@@ -1124,11 +1145,11 @@ def gene_labels(adata, df, training_labels, marker_dict, annodict, r, labels_per
         scanpy.pp.normalize_total(adata)
         GeneData = adata.X[:, GeneIndex].todense()
         SortedExp = np.argsort(GeneData, axis=0)[::-1]
-        list_gene = adata.obs.index[np.squeeze(SortedExp[range(labels_per_marker[m])])][0]
+        list_gene = adata.obs.index[np.array(np.squeeze(SortedExp[range(labels_per_marker[m])]))[0]]
         for idx, sub in enumerate(list(annodict.keys())):
             if sub == m:
                 back = idx
-        for coor in df.loc[list_gene, 4:5].to_numpy():
+        for coor in df.loc[list_gene, ['pxl_row','pxl_col']].to_numpy():
             training_labels[disk((coor[0], coor[1]), r)] = back + 1
     return training_labels
 
