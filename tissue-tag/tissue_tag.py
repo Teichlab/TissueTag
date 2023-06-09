@@ -12,7 +12,7 @@ import scipy
 import seaborn as sns
 import skimage
 import warnings
-from bokeh.models import FreehandDrawTool, PolyDrawTool, PolyEditTool, TabPanel, Tabs
+from bokeh.models import FreehandDrawTool, PolyDrawTool, PolyEditTool,TabPanel, Tabs
 from bokeh.plotting import figure, show
 from functools import partial
 from io import BytesIO
@@ -126,7 +126,8 @@ def read_visium(
     spaceranger_dir_path,
     use_resolution='hires',
     res_in_ppm = None,
-    fullres_path = None,  
+    fullres_path = None,
+    header = None,
 ):
     """
     Reads 10X Visium image data from SpaceRanger (v1.3.0).
@@ -145,6 +146,8 @@ def read_visium(
     fullres_path : str, optional
         Path to the full resolution image used for mapping. This must be specified if `use_resolution` is 
         set to 'fullres'.
+    header : int, optional (defa
+        newer SpaceRanger could need this to be set as 0. Default is None. 
 
     Returns
     -------
@@ -166,15 +169,23 @@ def read_visium(
     scalef = json.load(open(spaceranger_dir_path+'spatial/scalefactors_json.json','r'))
     if use_resolution=='fullres':
         assert fullres_path is not None, 'if use_resolution=="fullres" fullres_path has to be specified'
-
-    df = pd.read_csv(spaceranger_dir_path+'spatial/tissue_positions_list.csv',header=None)
-    df = df.set_index(keys=0)
-    df = df[df[1]>0] # in tissue
+        
+    df = pd.read_csv(spaceranger_dir_path+'spatial/tissue_positions_list.csv',header=header)
+    if header==0: 
+        df = df.set_index(keys='barcode')
+        df = df[df['in_tissue']>0] # in tissue
+         # turn df to mu
+        fullres_ppm = scalef['spot_diameter_fullres']/spotsize
+        df['pxl_row_in_fullres'] = df['pxl_row_in_fullres']/fullres_ppm
+        df['pxl_col_in_fullres'] = df['pxl_col_in_fullres']/fullres_ppm
+    else:
+        df = df.set_index(keys=0)
+        df = df[df[1]>0] # in tissue
+         # turn df to mu
+        fullres_ppm = scalef['spot_diameter_fullres']/spotsize
+        df['pxl_row_in_fullres'] = df[4]/fullres_ppm
+        df['pxl_col_in_fullres'] = df[5]/fullres_ppm
     
-    # turn df to mu
-    fullres_ppm = scalef['spot_diameter_fullres']/spotsize
-    df[4] = df[4]/fullres_ppm
-    df[5] = df[5]/fullres_ppm
     
     if use_resolution=='fullres':
         im = Image.open(fullres_path)
@@ -191,8 +202,8 @@ def read_visium(
         ppm = res_in_ppm
     
     # translate from mu to pixel
-    df[4] = df[4]*ppm
-    df[5] = df[5]*ppm
+    df['pxl_col_in_fullres'] = df['pxl_col_in_fullres']*ppm
+    df['pxl_row_in_fullres'] = df['pxl_row_in_fullres']*ppm
     
 
     im = im.convert("RGBA")
@@ -741,7 +752,6 @@ def grid_anno(
             used to scale xy grid positions to original image
 
     """
-
     print('generating grid with spot size - '+str(spot_diameter)+', with resolution of - '+str(ppm_in)+' ppm')
     positions = generate_hires_grid(im,spot_diameter,ppm_in)
     positions = positions.astype('float32')
@@ -797,7 +807,8 @@ def dist2cluster(df, annotation, distM, resolution=4, calc_dist=True, logscale=F
     dict
         Dictionary with the median distance for each category in the annotation column.
     """
-    
+    pd.options.mode.chained_assignment = None  # default='warn'
+
     Dist2ClusterAll = {}
     categories = np.unique(df[annotation])
 
@@ -872,7 +883,7 @@ def anno_to_cells(df_cells, x_col, y_col, df_grid, annotation='annotations', plo
     return df_cells
 
 
-def anno_to_visium_spots(df_spots, df_grid, plot=True):
+def anno_to_visium_spots(df_spots, df_grid, plot=True,how='nearest',max_distance=10e10):
     """
     Maps tissue annotations to Visium spots according to the nearest neighbors.
     
@@ -885,16 +896,23 @@ def anno_to_visium_spots(df_spots, df_grid, plot=True):
     plot : bool, optional
         If true, plots the coordinates of the grid space and the spot space to make sure 
         they are aligned. Default is True.
+    how : string, optinal
+        This determines how the association between the 2 grids is made from the scipy.interpolate.griddata function. Default is 'nearest'
+    max_distance : int
+        maximal distance where points are not migrated 
 
     Returns
     -------
     df_spots : pandas.DataFrame
         Updated dataframe with Visium spot data.
     """
+    import numpy as np
+    from scipy.interpolate import griddata
+    from scipy.spatial import cKDTree
     
     print('Make sure the coordinate systems are aligned, e.g., axes are not flipped.') 
     a = np.vstack([df_grid['x'], df_grid['y']])
-    b = np.vstack([df_spots[5], df_spots[4]])
+    b = np.vstack([df_spots['pxl_col_in_fullres'], df_spots['pxl_row_in_fullres']])
     
     if plot:
         plt.figure(dpi=100, figsize=[10, 10])
@@ -911,7 +929,18 @@ def anno_to_visium_spots(df_spots, df_grid, plot=True):
     
     for k in annotations:
         print('Migrating - ' + k + ' to segmentations.')
-        df_spots[k] = scipy.interpolate.griddata(points=a.T, values=df_grid[k], xi=b.T, method='nearest')
+              
+        # Interpolation
+        df_spots[k] = griddata(points=a.T, values=df_grid[k], xi=b.T, method=how)
+        
+        # Create KDTree
+        tree = cKDTree(a.T)
+        
+        # Query tree for nearest distance
+        distances, _ = tree.query(b.T, distance_upper_bound=max_distance)
+        # Mask df_spots where the distance is too high
+        df_spots[k][distances==np.inf] = None
+        # df_spots[k] = scipy.interpolate.griddata(points=a.T, values=df_grid[k], xi=b.T, method=how)
   
     return df_spots
 
