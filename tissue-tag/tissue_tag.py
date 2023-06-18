@@ -420,7 +420,7 @@ def scribble_to_labels(imarray, render_dict, line_width=10):
 
         xs = np.array(xs)
         ys = np.array(ys)
-        inshape = (xs > 0) & (xs < imarray.shape[0]) & (ys > 0) & (ys < imarray.shape[1])
+        inshape = (xs > 0) & (xs < imarray.shape[1]) & (ys > 0) & (ys < imarray.shape[0])
         xs = xs[inshape]
         ys = ys[inshape]
         
