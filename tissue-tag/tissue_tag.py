@@ -1259,3 +1259,9 @@ def overlay_labels(im1, im2, alpha=0.8, show=True):
         plt.imshow(out_img, origin='lower')
 
     return out_img
+
+def find_files(directory, query):
+    for root, dirs, files in os.walk(directory):
+        for file in files:
+            if query in file:
+                return os.path.join(root, file)
