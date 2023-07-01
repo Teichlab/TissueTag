@@ -16,7 +16,7 @@ pip install tissue-tag
 ## General instructions and examples:
 
 1) When running on farm, you need to set the port (e.g., 5011) you are using to get it plot properly in the correct place.
-2) To use anndata objects add scanpy to your env 'conda install -c conda-forge scanpy python-igraph leidenalg`
+2) To use anndata objects add scanpy to your env `conda install -c conda-forge scanpy python-igraph leidenalg`
 
 
 ## How to cite:
