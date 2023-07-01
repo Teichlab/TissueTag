@@ -15,11 +15,11 @@ pip install tissue-tag
 
 ## General instructions and examples:
 
-1) 
-3) When running on farm, you need to set the port (e.g., 5011) you are using to get it plot properly in the correct place 
+1) When running on farm, you need to set the port (e.g., 5011) you are using to get it plot properly in the correct place.
 
 
 ## How to cite:
+preprint coming! stay tuned
 
 
 
