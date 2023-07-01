@@ -13,21 +13,18 @@ You also need the tutorial notebook https://github.com/nadavyayon/TissueTag/blob
 3) When running on farm, you need to set the port (e.g., 5011) you are using to get it plot properly in the correct place 
 Python package to interactively annotate histological images within a Jupyter notebook
 
-
-# installation (partial - only tissue-tag) 
-
-# installation (complete - imagespot) 
+# installation 
 
 Instructions for imagespot env 
 
 1) Create a new conda environment:
-`conda create -n imagespot python=3.9`
+`conda create -n tissuetag python=3.9`
 say 'y' when asked
 
 2) activate new environment 
-`conda activate imagespot` 
+`conda activate tissuetag` 
 
-3) install scanpy
+3) optional - install scanpy
 `conda install -c conda-forge scanpy python-igraph leidenalg`
 
 4) install jupyter-lab 
