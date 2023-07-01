@@ -835,7 +835,7 @@ def dist2cluster(df, annotation, ppm, KNN=4, calc_dist=True, logscale=False):
         indextmp = df[annotation] == c
         if len(np.where(indextmp)[0]) > KNN:
             print(c)
-            Dist2ClusterAll[c] = np.median(np.sort(distM[indextmp, :], axis=0)[range(KNN), :], axis=0)
+            Dist2ClusterAll[c] = np.mean(np.sort(distM[indextmp, :], axis=0)[range(KNN), :], axis=0)
 
     for c in categories: 
         if c != 'unassigned':
