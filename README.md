@@ -1,5 +1,5 @@
 <p align="center">
-	<img src="https://raw.githubusercontent.com/nadavyayon/TissueTag/main/tissueTag_logo.png?token=GHSAT0AAAAAACEBVMPMPLHBMH5KAQK74NAYZFACXRA" width="300" >
+	<img src="https://github.com/nadavyayon/TissueTag/blob/main/tissueTag_logo.png" width="300" >
 </p>
 
 # Tissue Tag jupyter image annotator
