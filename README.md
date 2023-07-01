@@ -12,7 +12,7 @@ A jupyter-based image annotation tool - TissueTag is powered by the Bokeh python
 ```
 pip install tissue-tag
 ```
-
+3) install kernel `ipython kernel install --name tissuetag --user`
 ## General instructions and examples:
 
 1) When running on farm, you need to set the port (e.g., 5011) you are using to get it plot properly in the correct place.
