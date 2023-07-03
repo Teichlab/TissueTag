@@ -17,9 +17,18 @@ pip install tissue-tag
 3) install kernel `ipython kernel install --name tissuetag --user`
 ## General instructions and examples:
 
-1) When running on farm, you need to set the port (e.g., 5011) you are using to get it plot properly in the correct place.
-2) To use anndata objects add scanpy to your env `pip install scanpy`
+When running on farm, you need to set the port (e.g., 5011) you are using to get it plot properly in the correct place.
 
+### setting up an environment for visium annotation
+
+1) create env `conda create -n tissuetag python=3.9` `conda activate tissuetag`
+
+2) install tissuetag, scanpy and jupyterlab `pip install tissue-tag` `pip install scanpy` `conda install -c conda-forge jupyterlab`
+
+3) install kernel  `ipython kernel install --name tissuetag --user`
+
+### importing in a notebook 
+`import tissue_tag as tt`
 
 ## How to cite:
 preprint coming! stay tuned
