@@ -1265,3 +1265,70 @@ def find_files(directory, query):
         for file in files:
             if query in file:
                 return os.path.join(root, file)
+
+
+def migrate_annotations(df_source, df_target, ppm_source, ppm_target, plot=True, how='nearest', max_distance=10e10):
+    """
+    Maps tissue annotations from the source DataFrame to the target DataFrame according to the nearest neighbors.
+    
+    Parameters
+    ----------
+    df_source : pandas.DataFrame
+        Source DataFrame with annotations.
+    df_target : pandas.DataFrame
+        Target DataFrame where annotations will be migrated.
+    ppm_source : float 
+        pixels per micron of the source DataFrame
+    ppm_target : float 
+        pixels per micron of the target DataFrame
+    plot : bool, optional
+        If true, plots the coordinates of the source and target spaces to make sure 
+        they are aligned. Default is True.
+    how : string, optional
+        This determines how the association between the 2 grids is made from the scipy.interpolate.griddata function. Default is 'nearest'
+    max_distance : int, optional
+        maximal distance where points are not migrated. Default is 10e10
+
+    Returns
+    -------
+    df_target : pandas.DataFrame
+        Updated target DataFrame with annotations migrated from the source DataFrame.
+    """
+    import numpy as np
+    from scipy.interpolate import griddata
+    from scipy.spatial import cKDTree
+    import matplotlib.pyplot as plt
+    
+    print('Make sure the coordinate systems are aligned, e.g., axes are not flipped.') 
+    source_coords = np.vstack([df_source['x']*ppm_source, df_source['y']*ppm_source])
+    target_coords = np.vstack([df_target['x']*ppm_target, df_target['y']*ppm_target])
+    
+    if plot:
+        plt.figure(dpi=100, figsize=[10, 10])
+        plt.title('Target space')
+        plt.plot(target_coords[0], target_coords[1], '.', markersize=1)
+        plt.show()
+        
+        plt.figure(dpi=100, figsize=[10, 10])
+        plt.plot(source_coords[0], source_coords[1], '.', markersize=1)
+        plt.title('Source space')
+        plt.show()
+    
+    annotations = df_source.columns[~df_source.columns.isin(['x', 'y'])]
+    
+    for k in annotations:
+        print('Migrating - ' + k + ' to target DataFrame.')
+        
+        # Interpolation
+        df_target[k] = griddata(points=source_coords.T, values=df_source[k], xi=target_coords.T, method=how)
+        
+        # Create KDTree
+        tree = cKDTree(source_coords.T)
+        
+        # Query tree for nearest distance
+        distances, _ = tree.query(target_coords.T, distance_upper_bound=max_distance)
+        
+        # Mask df_target where the distance is too high
+        df_target[k][distances==np.inf] = None
+  
+    return df_target
