@@ -1332,3 +1332,248 @@ def migrate_annotations(df_source, df_target, ppm_source, ppm_target, plot=True,
         df_target[k][distances==np.inf] = None
   
     return df_target
+
+
+def map_annotations_to_visium(vis_path, df_grid, ppm_grid, spot_diameter, plot=True, how='nearest', max_distance_factor=50, use_resolution='hires', res_in_ppm=1, count_file='raw_feature_bc_matrix.h5'):
+    """
+    Processes Visium data with high-resolution grid.
+
+    Parameters
+    ----------
+    vis_path : str
+        Path to the Visium data.
+    df_grid : pandas.DataFrame
+        Dataframe with grid data.
+    ppm_grid : float 
+        Pixels per micron of grid.
+    spot_diameter : float
+        Diameter of the spots.
+    plot : bool, optional
+        If true, plots the coordinates of the grid space and the spot space to make sure they are aligned. Default is True.
+    how : string, optinal
+        This determines how the association between the 2 grids is made from the scipy.interpolate.griddata function. Default is 'nearest'
+    max_distance_factor : int
+        Factor to calculate maximal distance where points are not migrated. The final max_distance used will be max_distance_factor * ppm_visium.
+    use_resolution : str, optional
+        Resolution to use. Default is 'hires'.
+    res_in_ppm : float, optional
+        Resolution in pixels per micron. Default is 1.
+    count_file : str, optional
+        Filename of the count file. Default is 'raw_feature_bc_matrix.h5'.
+
+    Returns
+    -------
+    adata_vis : anndata.AnnData
+        Annotated data matrix with Visium spot data and additional annotations.
+    """
+    import scanpy as sc
+    # calculate distance matrix between hires and visium spots
+    im, ppm_visium, visium_positions = read_visium(spaceranger_dir_path=vis_path+'/', use_resolution=use_resolution, res_in_ppm=res_in_ppm, plot=False)
+    
+    # rename columns for visium_positions DataFrame
+    visium_positions.rename(columns={'pxl_row_in_fullres': "y", 'pxl_col_in_fullres': "x"}, inplace=True) 
+
+    # Transfer annotations
+    spot_annotations = anno_transfer(df_spots=visium_positions, df_grid=df_grid, ppm_spots=ppm_visium, ppm_grid=ppm_grid, plot=plot, how=how, max_distance=max_distance_factor * ppm_visium)
+
+    # Read visium data
+    adata_vis = sc.read_visium(vis_path, count_file=count_file)
+
+    # Merge with adata_vis
+    adata_vis.obs = pd.concat([adata_vis.obs, spot_annotations], axis=1)
+
+    # Convert to int
+    adata_vis.obsm['spatial'] = adata_vis.obsm['spatial'].astype('int')
+
+    # Add to uns
+    adata_vis.uns['hires_grid'] = df_grid
+    adata_vis.uns['hires_grid_ppm'] = ppm_grid
+    adata_vis.uns['hires_grid_diam'] = spot_diameter
+    adata_vis.uns['visium_ppm'] = ppm_visium
+
+
+
+    return adata_vis
+
+
+def load_and_combine_annotations(folder, file_names, spot_diameter, load_colors=True):
+    """
+    Load tissue annotations from multiple files and combine them into a single DataFrame.
+
+    Parameters
+    ----------
+    folder : str
+        Folder path where the annotation files are stored.
+    file_names : list of str
+        List of names of the annotation files.
+    spot_diameter : int
+        Diameter of the spots.
+    load_colors : bool, optional
+        Whether to load colors. Default is True.
+
+    Returns
+    -------
+    df : pandas.DataFrame
+        DataFrame that combines all the loaded annotations.
+    ppm_grid : float
+        Pixels per micron for the grid of the last loaded annotation.
+    """
+    df_list = []
+    ppm_grid = None
+
+    for file_name in file_names:
+        df, ppm_grid = anno_to_grid(folder=folder, file_name=file_name, spot_diameter=spot_diameter, load_colors=load_colors)
+        df_list.append(df)
+
+    # Concatenate all dataframes
+    df = pd.concat(df_list, join='inner', axis=1)
+
+    # Remove duplicated columns
+    df = df.loc[:, ~df.columns.duplicated()].copy()
+
+    return df, ppm_grid
+
+def annotate_l2(adata_vis, annotation='annotations_level_0', KNN=10, max_distance_factor=50, plot=False,calc_dist=True):
+    """
+    Process the given AnnData object to calculate distances and perform annotation transfer.
+    
+    Parameters
+    ----------
+    adata_vis : anndata.AnnData
+        AnnData object containing Visium data.
+    annotation : str, optional
+        Annotation column to be used for calculating distances, by default 'annotations_level_0'.
+    KNN : int, optional
+        Number of nearest neighbors to be considered for distance calculation, by default 10.
+    max_distance_factor : int, optional
+        Factor by which Visium pixels per micron (ppm) is multiplied to calculate the maximum distance for annotation transfer, by default 50.
+    plot : bool, optional
+        Whether to plot during the annotation transfer, by default False.
+     calc_dist : bool, optional
+        If true, calculates the distance. Default is True.
+    
+    Returns
+    -------
+    anndata.AnnData
+        Processed AnnData object with updated observations.
+    """
+    df_grid = adata_vis.uns['hires_grid']
+    df_visium = adata_vis.obs[['x','y']].dropna()
+    dist2cluster_fast(df_grid, annotation=annotation, KNN=KNN,calc_dist=calc_dist) # calculate minimum mean distance of each spot to clusters 
+    df_grid_new = df_grid.filter(like=annotation)
+    df_grid_new['x'] = df_grid['x']
+    df_grid_new['y'] = df_grid['y']
+    spot_annotations = anno_transfer(df_spots=df_visium, df_grid=df_grid_new, ppm_spots=adata_vis.uns['visium_ppm'], ppm_grid=adata_vis.uns['hires_grid_ppm'], max_distance=max_distance_factor * adata_vis.uns['visium_ppm'], plot=plot)
+    for col in spot_annotations:
+        adata_vis.obs[col] = spot_annotations[col]
+        adata_vis.uns['hires_grid'][col] = df_grid_new[col]
+    # df1 = pd.concat([adata_vis.obs, spot_annotations], axis=1)
+    # df1 = df1.loc[:, ~df1.columns.duplicated()].copy()
+    # adata_vis.obs = df1
+
+    return adata_vis
+
+
+def anno_transfer(df_spots, df_grid, ppm_spots, ppm_grid, plot=True, how='nearest', max_distance=10e10):
+    """
+    Maps tissue annotations to Visium spots according to the nearest neighbors.
+    
+    Parameters
+    ----------
+    df_spots : pandas.DataFrame
+        Dataframe with Visium spot data.
+    df_grid : pandas.DataFrame
+        Dataframe with grid data.
+    ppm_spots : float 
+        pixels per micron of spots
+    ppm_grid : float 
+        pixels per micron of grid
+    plot : bool, optional
+        If true, plots the coordinates of the grid space and the spot space to make sure 
+        they are aligned. Default is True.
+    how : string, optinal
+        This determines how the association between the 2 grids is made from the scipy.interpolate.griddata function. Default is 'nearest'
+    max_distance : int
+        maximal distance where points are not migrated 
+
+    Returns
+    -------
+    df_spots : pandas.DataFrame
+        Updated dataframe with Visium spot data.
+    """
+    import numpy as np
+    from scipy.interpolate import griddata
+    from scipy.spatial import cKDTree
+    import matplotlib.pyplot as plt
+    
+    print('Make sure the coordinate systems are aligned, e.g., axes are not flipped.') 
+    a = np.vstack([df_grid['x']/ppm_grid, df_grid['y']/ppm_grid])
+    b = np.vstack([df_spots['x']/ppm_spots, df_spots['y']/ppm_spots])
+    
+    if plot:
+        plt.figure(dpi=100, figsize=[10, 10])
+        plt.title('Spot space')
+        plt.plot(b[0], b[1], '.', markersize=1)
+        plt.show()
+        
+        plt.figure(dpi=100, figsize=[10, 10])
+        plt.plot(a[0], a[1], '.', markersize=1)
+        plt.title('Morpho space')
+        plt.show()
+
+    # Create new DataFrame
+    new_df_spots = df_spots[['x', 'y']].copy()
+    
+    annotations = df_grid.columns[~df_grid.columns.isin(['x', 'y'])]
+    
+    for k in annotations:
+        print('Migrating morphology - ' + k + ' to target space.')
+        
+        # Interpolation
+        new_df_spots[k] = griddata(points=a.T, values=df_grid[k], xi=b.T, method=how)
+        
+        # Create KDTree
+        tree = cKDTree(a.T)
+        
+        # Query tree for nearest distance
+        distances, _ = tree.query(b.T, distance_upper_bound=max_distance)
+        
+        # Mask df_spots where the distance is too high
+        new_df_spots[k][distances==np.inf] = None
+  
+    return new_df_spots
+
+def dist2cluster_fast(df, annotation, KNN=4, calc_dist=True, logscale=False):
+    from scipy.spatial import cKDTree
+
+    print('calculating distance matrix with cKDTree')
+
+    points = np.vstack([df['x'],df['y']]).T
+    categories = np.unique(df[annotation])
+
+    Dist2ClusterAll = {c: np.zeros(df.shape[0]) for c in categories}
+
+    for idx, c in enumerate(categories):
+        indextmp = df[annotation] == c
+        if np.sum(indextmp) > KNN:
+            print(c)
+            cluster_points = points[indextmp]
+            tree = cKDTree(cluster_points)
+            # Get KNN nearest neighbors for each point
+            distances, _ = tree.query(points, k=KNN)
+            # Store the mean distance for each point to the current category
+            if KNN == 1:
+                Dist2ClusterAll[c] = distances # No need to take mean if only one neighbor
+            else:
+                Dist2ClusterAll[c] = np.mean(distances, axis=1)
+
+    for c in categories: 
+        if c != 'unassigned':
+            if calc_dist:
+                if logscale:
+                    df["L2_dist_log10_"+annotation+'_'+c] = np.log10(Dist2ClusterAll[c])
+                else:
+                    df["L2_dist_"+annotation+'_'+c] = Dist2ClusterAll[c]
+
+    return Dist2ClusterAll
+
