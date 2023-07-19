@@ -12,6 +12,7 @@ import scipy
 import seaborn as sns
 import skimage
 import warnings
+import os
 from bokeh.models import FreehandDrawTool, PolyDrawTool, PolyEditTool,TabPanel, Tabs
 from bokeh.plotting import figure, show
 from functools import partial
@@ -25,8 +26,9 @@ from skimage.draw import polygon, disk
 from sklearn.ensemble import RandomForestClassifier
 from tqdm import tqdm
 
+
 try:
-    import scanpy as sc
+    import scanpy as scread_visium
 except ImportError:
     print('scanpy is not available')
 
@@ -95,6 +97,7 @@ def read_image(
     if not(ppm_image):
         try:
             ppm_image = im.info['resolution'][0]
+            print('found ppm in image metadata!, its - '+str(ppm_image))
         except:
             print('could not find ppm in image metadata, please provide ppm value')
     width, height = im.size
@@ -772,7 +775,7 @@ def grid_anno(
     dim = [im.shape[0],im.shape[1]]
     # transform tissue annotation images to original size
 
-    radius = spot_diameter/8
+    radius = spot_diameter/4 # measure the annotation from the center of the spot 
     df = pd.DataFrame(
         np.vstack((np.array(range(len(positions.T[:,0]))),positions.T[:,0],
                    positions.T[:,1])).T,
@@ -807,8 +810,6 @@ def dist2cluster(df, annotation, ppm, KNN=4, calc_dist=True, logscale=False):
         Dataframe containing spatial data.
     annotation : str
         The column in df that contains the structure annotation.
-    ppm : float
-        the coordinates of df in pixel scale
     KNN : int, optional
         Determines the number of closest points used to calculate the mean distance. Default is 4.
     calc_dist : bool, optional
@@ -848,6 +849,37 @@ def dist2cluster(df, annotation, ppm, KNN=4, calc_dist=True, logscale=False):
     
     return Dist2ClusterAll
 
+def dist2cluster_fast(df, annotation, KNN=5, logscale=False):
+    from scipy.spatial import cKDTree
+
+    print('calculating distance matrix with cKDTree')
+
+    points = np.vstack([df['x'],df['y']]).T
+    categories = np.unique(df[annotation])
+
+    Dist2ClusterAll = {c: np.zeros(df.shape[0]) for c in categories}
+
+    for idx, c in enumerate(categories):
+        indextmp = df[annotation] == c
+        if np.sum(indextmp) > KNN:
+            print(c)
+            cluster_points = points[indextmp]
+            tree = cKDTree(cluster_points)
+            # Get KNN nearest neighbors for each point
+            distances, _ = tree.query(points, k=KNN)
+            # Store the mean distance for each point to the current category
+            if KNN == 1:
+                Dist2ClusterAll[c] = distances # No need to take mean if only one neighbor
+            else:
+                Dist2ClusterAll[c] = np.mean(distances, axis=1)
+
+    for c in categories:              
+        if logscale:
+            df["L2_dist_log10_"+annotation+'_'+c] = np.log10(Dist2ClusterAll[c])
+        else:
+            df["L2_dist_"+annotation+'_'+c] = Dist2ClusterAll[c]
+
+    return Dist2ClusterAll
 
     
 def anno_to_cells(df_cells, x_col, y_col, df_grid, annotation='annotations', plot=True):
@@ -1260,6 +1292,7 @@ def overlay_labels(im1, im2, alpha=0.8, show=True):
 
     return out_img
 
+
 def find_files(directory, query):
     for root, dirs, files in os.walk(directory):
         for file in files:
@@ -1267,32 +1300,33 @@ def find_files(directory, query):
                 return os.path.join(root, file)
 
 
-def migrate_annotations(df_source, df_target, ppm_source, ppm_target, plot=True, how='nearest', max_distance=10e10):
+
+def anno_transfer(df_spots, df_grid, ppm_spots, ppm_grid, plot=True, how='nearest', max_distance=10e10):
     """
-    Maps tissue annotations from the source DataFrame to the target DataFrame according to the nearest neighbors.
+    Maps tissue annotations to Visium spots according to the nearest neighbors.
     
     Parameters
     ----------
-    df_source : pandas.DataFrame
-        Source DataFrame with annotations.
-    df_target : pandas.DataFrame
-        Target DataFrame where annotations will be migrated.
-    ppm_source : float 
-        pixels per micron of the source DataFrame
-    ppm_target : float 
-        pixels per micron of the target DataFrame
+    df_spots : pandas.DataFrame
+        Dataframe with Visium spot data.
+    df_grid : pandas.DataFrame
+        Dataframe with grid data.
+    ppm_spots : float 
+        pixels per micron of spots
+    ppm_grid : float 
+        pixels per micron of grid
     plot : bool, optional
-        If true, plots the coordinates of the source and target spaces to make sure 
+        If true, plots the coordinates of the grid space and the spot space to make sure 
         they are aligned. Default is True.
-    how : string, optional
+    how : string, optinal
         This determines how the association between the 2 grids is made from the scipy.interpolate.griddata function. Default is 'nearest'
-    max_distance : int, optional
-        maximal distance where points are not migrated. Default is 10e10
+    max_distance : int
+        maximal distance where points are not migrated 
 
     Returns
     -------
-    df_target : pandas.DataFrame
-        Updated target DataFrame with annotations migrated from the source DataFrame.
+    df_spots : pandas.DataFrame
+        Updated dataframe with Visium spot data.
     """
     import numpy as np
     from scipy.interpolate import griddata
@@ -1300,38 +1334,80 @@ def migrate_annotations(df_source, df_target, ppm_source, ppm_target, plot=True,
     import matplotlib.pyplot as plt
     
     print('Make sure the coordinate systems are aligned, e.g., axes are not flipped.') 
-    source_coords = np.vstack([df_source['x']*ppm_source, df_source['y']*ppm_source])
-    target_coords = np.vstack([df_target['x']*ppm_target, df_target['y']*ppm_target])
+    a = np.vstack([df_grid['x']/ppm_grid, df_grid['y']/ppm_grid])
+    b = np.vstack([df_spots['x']/ppm_spots, df_spots['y']/ppm_spots])
     
     if plot:
         plt.figure(dpi=100, figsize=[10, 10])
-        plt.title('Target space')
-        plt.plot(target_coords[0], target_coords[1], '.', markersize=1)
+        plt.title('Spot space')
+        plt.plot(b[0], b[1], '.', markersize=1)
         plt.show()
         
         plt.figure(dpi=100, figsize=[10, 10])
-        plt.plot(source_coords[0], source_coords[1], '.', markersize=1)
-        plt.title('Source space')
+        plt.plot(a[0], a[1], '.', markersize=1)
+        plt.title('Morpho space')
         plt.show()
+
+    # Create new DataFrame
+    new_df_spots = df_spots[['x', 'y']].copy()
     
-    annotations = df_source.columns[~df_source.columns.isin(['x', 'y'])]
+    annotations = df_grid.columns[~df_grid.columns.isin(['x', 'y'])]
     
     for k in annotations:
-        print('Migrating - ' + k + ' to target DataFrame.')
+        print('Migrating morphology - ' + k + ' to target space.')
         
         # Interpolation
-        df_target[k] = griddata(points=source_coords.T, values=df_source[k], xi=target_coords.T, method=how)
+        new_df_spots[k] = griddata(points=a.T, values=df_grid[k], xi=b.T, method=how)
         
         # Create KDTree
-        tree = cKDTree(source_coords.T)
+        tree = cKDTree(a.T)
         
         # Query tree for nearest distance
-        distances, _ = tree.query(target_coords.T, distance_upper_bound=max_distance)
+        distances, _ = tree.query(b.T, distance_upper_bound=max_distance)
         
-        # Mask df_target where the distance is too high
-        df_target[k][distances==np.inf] = None
+        # Mask df_spots where the distance is too high
+        new_df_spots[k][distances==np.inf] = None
   
-    return df_target
+    return new_df_spots
+
+
+
+def anno_to_grid(folder, file_name, spot_diameter, load_colors=False,null_number=1):
+    """
+    Load annotations and transform them into a spot grid.
+    
+    Parameters
+    ----------
+    folder : str
+        Folder path for annotations.
+    file_name : str
+        Name for tif image and pickle without extensions.
+    spot_diameter : float
+        The diameter used for grid.
+    load_colors : bool, optional
+        If True, get original colors used for annotations. Default is False.
+    null_numer : int
+        value of the label image where no useful information is stored e.g. background or unassigned pixels (usually 0 or 1). Default is 1
+
+    Returns
+    -------
+    df : pandas.DataFrame
+        Dataframe with the grid annotations.
+    """
+    
+    im, anno_order, ppm, anno_color = load_annotation(folder, file_name, load_colors)
+
+    df = grid_anno(
+        im,
+        [im],
+        [file_name],
+        [anno_order],
+        spot_diameter,
+        ppm,
+        ppm,
+    )
+
+    return df,ppm
 
 
 def map_annotations_to_visium(vis_path, df_grid, ppm_grid, spot_diameter, plot=True, how='nearest', max_distance_factor=50, use_resolution='hires', res_in_ppm=1, count_file='raw_feature_bc_matrix.h5'):
@@ -1433,37 +1509,43 @@ def load_and_combine_annotations(folder, file_names, spot_diameter, load_colors=
 
     return df, ppm_grid
 
-def annotate_l2(adata_vis, annotation='annotations_level_0', KNN=10, max_distance_factor=50, plot=False,calc_dist=True):
+def annotate_l2(df_target, df_grid, annotation='annotations_level_0', KNN=10, max_distance_factor=50, plot=False,calc_dist=True):
     """
     Process the given AnnData object to calculate distances and perform annotation transfer.
     
     Parameters
     ----------
-    adata_vis : anndata.AnnData
-        AnnData object containing Visium data.
+    df_target : pandas.DataFrame
+        Dataframe with target data to be annotated.
+    df_grid : pandas.DataFrame
+        Dataframe with annotation data.
     annotation : str, optional
         Annotation column to be used for calculating distances, by default 'annotations_level_0'.
+    ppm_grid : float
+        should be the ppm resolution fot the grid data for visium would be stored here - adata_vis.uns['hires_grid_ppm']
+    ppm_spots : float
+        should be the ppm resolution fot the target data for visium would be stored here - adata_vis.uns['visium_ppm']
     KNN : int, optional
         Number of nearest neighbors to be considered for distance calculation, by default 10.
     max_distance_factor : int, optional
-        Factor by which Visium pixels per micron (ppm) is multiplied to calculate the maximum distance for annotation transfer, by default 50.
+        Factor by which to calculate the maximum distance for annotation transfer, by default 50 in microns.
     plot : bool, optional
         Whether to plot during the annotation transfer, by default False.
      calc_dist : bool, optional
-        If true, calculates the distance. Default is True.
+        If true, calculates the L2 distance. Default is True otherwise just migrates discrete annotations.
     
     Returns
     -------
     anndata.AnnData
         Processed AnnData object with updated observations.
     """
-    df_grid = adata_vis.uns['hires_grid']
-    df_visium = adata_vis.obs[['x','y']].dropna()
+    
+    df = df.obs[['x','y']].dropna()
     dist2cluster_fast(df_grid, annotation=annotation, KNN=KNN,calc_dist=calc_dist) # calculate minimum mean distance of each spot to clusters 
     df_grid_new = df_grid.filter(like=annotation)
     df_grid_new['x'] = df_grid['x']
     df_grid_new['y'] = df_grid['y']
-    spot_annotations = anno_transfer(df_spots=df_visium, df_grid=df_grid_new, ppm_spots=adata_vis.uns['visium_ppm'], ppm_grid=adata_vis.uns['hires_grid_ppm'], max_distance=max_distance_factor * adata_vis.uns['visium_ppm'], plot=plot)
+    spot_annotations = anno_transfer(df_spots=df_visium, df_grid=df_grid_new, ppm_spots=ppm_spots, ppm_grid=adata_vis.uns['hires_grid_ppm'], max_distance=max_distance_factor * adata_vis.uns['visium_ppm'], plot=plot)
     for col in spot_annotations:
         adata_vis.obs[col] = spot_annotations[col]
         adata_vis.uns['hires_grid'][col] = df_grid_new[col]
@@ -1474,63 +1556,62 @@ def annotate_l2(adata_vis, annotation='annotations_level_0', KNN=10, max_distanc
     return adata_vis
 
 
-def anno_transfer(df_spots, df_grid, ppm_spots, ppm_grid, plot=True, how='nearest', max_distance=10e10):
+
+def map_annotations_to_target(df_source, df_target, ppm_source,ppm_target, plot=True, how='nearest', max_distance=50):
     """
-    Maps tissue annotations to Visium spots according to the nearest neighbors.
-    
+    map annotations to any form of of csv where you have x y cooodinates spot df (cells or spots) data with high-resolution grid.
+    note! - xy coordinates must be named 'x' and 'y'
+
     Parameters
     ----------
-    df_spots : pandas.DataFrame
-        Dataframe with Visium spot data.
-    df_grid : pandas.DataFrame
+    df_source : pandas.DataFrame
         Dataframe with grid data.
-    ppm_spots : float 
-        pixels per micron of spots
-    ppm_grid : float 
-        pixels per micron of grid
+    df_target : pandas.DataFrame
+        Dataframe with target data.
+    ppm_source : float 
+        Pixels per micron of source data.
+    ppm_target : float 
+        Pixels per micron of target data.
     plot : bool, optional
-        If true, plots the coordinates of the grid space and the spot space to make sure 
-        they are aligned. Default is True.
+        If true, plots the coordinates of the grid space and the spot space to make sure they are aligned. Default is True.
     how : string, optinal
         This determines how the association between the 2 grids is made from the scipy.interpolate.griddata function. Default is 'nearest'
+        if the data is categorial then only the 'nearest' would work but if interpolation is needed one should supbset to only numeric data.
     max_distance : int
-        maximal distance where points are not migrated 
-
+        Factor to calculate maximal distance where points are not migrated. The final max_distance used will be max_distance * ppm_target.
+   
     Returns
     -------
-    df_spots : pandas.DataFrame
-        Updated dataframe with Visium spot data.
+    df_target : pandas.DataFrame
+        Annotated dataframe with additional annotations from the source data.
     """
-    import numpy as np
     from scipy.interpolate import griddata
     from scipy.spatial import cKDTree
-    import matplotlib.pyplot as plt
+
     
-    print('Make sure the coordinate systems are aligned, e.g., axes are not flipped.') 
-    a = np.vstack([df_grid['x']/ppm_grid, df_grid['y']/ppm_grid])
-    b = np.vstack([df_spots['x']/ppm_spots, df_spots['y']/ppm_spots])
+    # generate matched coordinate space 
+    a = np.vstack([df_source['x']/ppm_source, df_source['y']/ppm_source])
+    b = np.vstack([df_target['x']/ppm_target, df_target['y']/ppm_target])
     
     if plot:
+        print('Make sure the coordinate systems are aligned, e.g., axes are not flipped and the resolution is matched.') 
         plt.figure(dpi=100, figsize=[10, 10])
-        plt.title('Spot space')
+        plt.title('Target space')
         plt.plot(b[0], b[1], '.', markersize=1)
         plt.show()
         
         plt.figure(dpi=100, figsize=[10, 10])
         plt.plot(a[0], a[1], '.', markersize=1)
-        plt.title('Morpho space')
+        plt.title('Souce space')
         plt.show()
 
-    # Create new DataFrame
-    new_df_spots = df_spots[['x', 'y']].copy()
-    
-    annotations = df_grid.columns[~df_grid.columns.isin(['x', 'y'])]
+    annotations = df_source.columns[~df_source.columns.isin(['x', 'y'])] # extract annotation categories
     
     for k in annotations:
-        print('Migrating morphology - ' + k + ' to target space.')
+        print('Migrating souce annotation - ' + k + ' to target space.')
         
         # Interpolation
-        new_df_spots[k] = griddata(points=a.T, values=df_grid[k], xi=b.T, method=how)
+        df_target[k] = griddata(points=a.T, values=df_source[k], xi=b.T, method=how)
         
         # Create KDTree
         tree = cKDTree(a.T)
@@ -1539,41 +1620,6 @@ def anno_transfer(df_spots, df_grid, ppm_spots, ppm_grid, plot=True, how='neares
         distances, _ = tree.query(b.T, distance_upper_bound=max_distance)
         
         # Mask df_spots where the distance is too high
-        new_df_spots[k][distances==np.inf] = None
+        df_target[k][distances==np.inf] = None
   
-    return new_df_spots
-
-def dist2cluster_fast(df, annotation, KNN=4, calc_dist=True, logscale=False):
-    from scipy.spatial import cKDTree
-
-    print('calculating distance matrix with cKDTree')
-
-    points = np.vstack([df['x'],df['y']]).T
-    categories = np.unique(df[annotation])
-
-    Dist2ClusterAll = {c: np.zeros(df.shape[0]) for c in categories}
-
-    for idx, c in enumerate(categories):
-        indextmp = df[annotation] == c
-        if np.sum(indextmp) > KNN:
-            print(c)
-            cluster_points = points[indextmp]
-            tree = cKDTree(cluster_points)
-            # Get KNN nearest neighbors for each point
-            distances, _ = tree.query(points, k=KNN)
-            # Store the mean distance for each point to the current category
-            if KNN == 1:
-                Dist2ClusterAll[c] = distances # No need to take mean if only one neighbor
-            else:
-                Dist2ClusterAll[c] = np.mean(distances, axis=1)
-
-    for c in categories: 
-        if c != 'unassigned':
-            if calc_dist:
-                if logscale:
-                    df["L2_dist_log10_"+annotation+'_'+c] = np.log10(Dist2ClusterAll[c])
-                else:
-                    df["L2_dist_"+annotation+'_'+c] = Dist2ClusterAll[c]
-
-    return Dist2ClusterAll
-
+    return df_target
