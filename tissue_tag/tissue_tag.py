@@ -1602,13 +1602,13 @@ def map_annotations_to_target(df_source, df_target, ppm_source,ppm_target, plot=
         
         plt.figure(dpi=100, figsize=[10, 10])
         plt.plot(a[0], a[1], '.', markersize=1)
-        plt.title('Souce space')
+        plt.title('source space')
         plt.show()
 
     annotations = df_source.columns[~df_source.columns.isin(['x', 'y'])] # extract annotation categories
     
     for k in annotations:
-        print('Migrating souce annotation - ' + k + ' to target space.')
+        print('Migrating source annotation - ' + k + ' to target space.')
         
         # Interpolation
         df_target[k] = griddata(points=a.T, values=df_source[k], xi=b.T, method=how)
