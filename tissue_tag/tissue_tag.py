@@ -1623,3 +1623,23 @@ def map_annotations_to_target(df_source, df_target, ppm_source,ppm_target, plot=
         df_target[k][distances==np.inf] = None
   
     return df_target
+
+
+def read_visium_table(vis_path):
+    """
+    This function reads a scale factor from a json file and a table from a csv file, 
+    then calculates the 'ppm' value and returns the table with the new column names.
+    
+    note that for CytAssist the header is changes so this funciton should be updated
+    """
+    with open(vis_path + '/spatial/scalefactors_json.json', 'r') as f:
+        scalef = json.load(f)
+
+    ppm = scalef['spot_diameter_fullres'] / 55 
+
+    df_visium_spot = pd.read_csv(vis_path + '/spatial/tissue_positions_list.csv', header=None)
+
+    df_visium_spot.rename(columns={4:'y',5:'x',1:'in_tissue',0:'barcode'}, inplace=True)
+    df_visium_spot.set_index('barcode', inplace=True)
+
+    return df_visium_spot, ppm
