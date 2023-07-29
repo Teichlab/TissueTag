@@ -33,7 +33,12 @@ When running on farm, you need to set the port (e.g., 5011) you are using to get
 ## How to cite:
 preprint coming! stay tuned
 
-
+## How to use 
+We supply 2 examples of usage for TissueTag annotations: 
+1) visium spatial transcriptomics 
+2) IBEX singel cell multiplex protein imaging
+   in this example we annotate a postnatal thymus image by calling the major anatomimcal reagios and training a random forst classifier for intial prediction follwed by manual corrections
+   [IBEX flourecent tutorial]([https://github.com/nadavyayon/TissueTag/blob/main/Tutorials/image_annotation_tutorial_flourscent_final.ipynb)
 
 
 
