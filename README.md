@@ -42,7 +42,7 @@ We supply 2 examples of usage for TissueTag annotations:
    in this example we annotate a postnatal thymus image by calling the major anatomimcal reagios and training a random forst classifier for intial prediction follwed by manual corrections
    [IBEX flourecent tutorial](https://github.com/nadavyayon/TissueTag/blob/main/Tutorials/image_annotation_tutorial_flourscent_final.ipynb)
 
-## Using on farm vs local machine 
+## Usage on farm vs local machine 
 Bokeh interactive plotting requiered communicaiton between the notebook instance and the browser. 
 We have tested the functionality of TissueTag with jupyter lab or jupyter notebooks but have not yet implemented a solution for jupyter hub.
 In addition SSH tunneling is not supported as well but VPN should work fine. 
