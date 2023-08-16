@@ -52,4 +52,4 @@ When using a local machine the `show` function from bokeh should work with:
 
 when using a farm job with an interactive jupyter lab or jupyter notebook you should use this:
 `show(app,notebook_url=f'{socket.gethostname()}:'+host)`
-where host is your post number e.g. 5011
+where `host` is your port number e.g. 5011
