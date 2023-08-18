@@ -14,10 +14,6 @@ A jupyter-based image annotation tool - TissueTag is powered by the Bokeh python
 ```
 pip install tissue-tag
 ```
-
-### importing in a notebook 
-`import tissue_tag as tt`
-
 ## How to cite:
 preprint coming! stay tuned
 
