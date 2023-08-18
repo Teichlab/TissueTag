@@ -15,18 +15,6 @@ A jupyter-based image annotation tool - TissueTag is powered by the Bokeh python
 pip install tissue-tag
 ```
 
-## General instructions and examples:
-
-When running on farm, you need to set the port (e.g., 5011) you are using to get it plot properly in the correct place.
-
-### setting up an environment for visium annotation
-
-1) create env `conda create -n tissuetag python=3.9` `conda activate tissuetag`
-
-2) install tissuetag, scanpy and jupyterlab `pip install tissue-tag` `pip install scanpy` `conda install -c conda-forge jupyterlab`
-
-3) install kernel  `ipython kernel install --name tissuetag --user`
-
 ### importing in a notebook 
 `import tissue_tag as tt`
 
@@ -50,6 +38,8 @@ In addition SSH tunneling is not supported as well but VPN should work fine.
 When using a local machine the `show` function from bokeh should work with:
 `show(app,notebook_url='localhost:8888')` 
 
+
+When running on farm, you need to set the port (e.g., 5011) you are using to get it plot properly in the correct place.
 when using a farm job with an interactive jupyter lab or jupyter notebook you should use this:
 `show(app,notebook_url=f'{socket.gethostname()}:'+host)`
 where `host` is your port number e.g. 5011
