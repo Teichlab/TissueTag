@@ -14,28 +14,27 @@ A jupyter-based image annotation tool - TissueTag is powered by the Bokeh python
 ```
 pip install tissue-tag
 ```
-## How to cite:
-preprint coming! stay tuned
-
 ## How to use 
 We supply 2 examples of usage for TissueTag annotations: 
 1) visium spatial transcriptomics
    in this example we annotate a postnatal thymus dataset by calling the major anatomimcal reagios based on either marker gene expression or manually, then training a random forst classifier for intial prediction follwed by manual corrections and migraiton of annotations back to the visium anndata object.
    [visium semi-automated tutorial](https://github.com/nadavyayon/TissueTag/blob/main/Tutorials/image_annotation_tutorial_visium_semi_automated.ipynb)
-3) IBEX singel cell multiplex protein imaging
+2) IBEX singel cell multiplex protein imaging
    in this example we annotate a postnatal thymus image by calling the major anatomimcal reagios and training a random forst classifier for intial prediction follwed by manual corrections
    [IBEX flourecent tutorial](https://github.com/nadavyayon/TissueTag/blob/main/Tutorials/image_annotation_tutorial_flourscent_final.ipynb)
 
-## Usage on farm vs local machine 
+## Usage on a cluster vs local machine 
 Bokeh interactive plotting requiered communicaiton between the notebook instance and the browser. 
 We have tested the functionality of TissueTag with jupyter lab or jupyter notebooks but have not yet implemented a solution for jupyter hub.
-In addition SSH tunneling is not supported as well but VPN should work fine. 
+In addition SSH tunneling is not supported as well but if you are accessing the notebook from outside your institute, VPN access should work fine. 
 
 When using a local machine the `show` function from bokeh should work with:
 `show(app,notebook_url='localhost:8888')` 
 
-
-When running on farm, you need to set the port (e.g., 5011) you are using to get it plot properly in the correct place.
-when using a farm job with an interactive jupyter lab or jupyter notebook you should use this:
+When running on a cluster, you need to set the port (e.g., 5011) you are using to get it plot properly in the correct place.
+when using a cluster job with an interactive jupyter lab or jupyter notebook you should use this:
 `show(app,notebook_url=f'{socket.gethostname()}:'+host)`
 where `host` is your port number e.g. 5011
+
+## How to cite:
+preprint coming! stay tuned
