@@ -800,56 +800,7 @@ def grid_anno(
     return df
 
 
-def dist2cluster(df, annotation, ppm, KNN=4, calc_dist=True, logscale=False):
-    """
-    Calculates the minimal Euclidean distance of each point in space to an anatomical structure.
-
-    Parameters
-    ----------
-    df : pandas.DataFrame
-        Dataframe containing spatial data.
-    annotation : str
-        The column in df that contains the structure annotation.
-    KNN : int, optional
-        Determines the number of closest points used to calculate the mean distance. Default is 4.
-    calc_dist : bool, optional
-        If true, calculates the distance. Default is True.
-    logscale : bool, optional
-        If true, applies a log10 transformation to the distance. Default is False.
-    
-
-    Returns
-    -------
-    dict
-        Dictionary with the median distance for each category in the annotation column.
-    """
-    pd.options.mode.chained_assignment = None  # default='warn'
-    from scipy.spatial import distance_matrix, distance
-    print('calculating distance matrix')
-    a = np.vstack([df['x'],df['y']]).astype(int)
-    distM = distance.cdist(a.T,a.T, metric='euclidean')
-
-    Dist2ClusterAll = {}
-    categories = np.unique(df[annotation])
-
-    for idx, c in enumerate(categories):
-        indextmp = df[annotation] == c
-        if len(np.where(indextmp)[0]) > KNN:
-            print(c)
-            Dist2ClusterAll[c] = np.mean(np.sort(distM[indextmp, :], axis=0)[range(KNN), :], axis=0)
-
-    for c in categories: 
-        if c != 'unassigned':
-            if calc_dist:
-                if logscale:
-                    df["L2_dist_log10_"+annotation+'_'+c] = np.log10(Dist2ClusterAll[c]/ppm)
-                else:
-                    df["L2_dist_"+annotation+'_'+c] = Dist2ClusterAll[c]/ppm
-            df[annotation] = categories[np.argmin(np.array(list(Dist2ClusterAll.values())), axis=0)]
-    
-    return Dist2ClusterAll
-
-def dist2cluster_fast(df, annotation, KNN=5, logscale=False):
+def dist2cluster_fast(df,ppm, annotation, KNN=5, logscale=False):
     from scipy.spatial import cKDTree
 
     print('calculating distance matrix with cKDTree')
@@ -869,9 +820,9 @@ def dist2cluster_fast(df, annotation, KNN=5, logscale=False):
             distances, _ = tree.query(points, k=KNN)
             # Store the mean distance for each point to the current category
             if KNN == 1:
-                Dist2ClusterAll[c] = distances # No need to take mean if only one neighbor
+                Dist2ClusterAll[c] = distances/ppm # No need to take mean if only one neighbor
             else:
-                Dist2ClusterAll[c] = np.mean(distances, axis=1)
+                Dist2ClusterAll[c] = np.mean(distances, axis=1)/ppm
 
     for c in categories:              
         if logscale:
