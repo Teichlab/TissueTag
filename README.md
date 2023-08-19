@@ -5,7 +5,7 @@
 # Tissue Tag jupyter image annotator
 A jupyter-based image annotation tool - TissueTag is powered by the Bokeh python library (http://www.bokeh.pydata.org) and provides a simple annotation solution with subpixel resolution for fast interactive annotation of any image type or kind (brightfield, fluorescence, etc) as well as spatial omics. TissueTag generates discrete annotations (e.g. cortex, medulla etc) but can also output the euclidean distance of each spot/cell to the closest part of a given morphological structure, enabling continuous annotation. This thus holds spatial neighbourhood information that goes beyond the x-y coordinates of a given spot or cell. 
 
-### We see this tool as a basic start and feel there are many useful applicaitons that could be added, so we welcome any contibution and look forward to suggestions!
+### We see this tool as a basic start and feel there are many useful applications that could be added, so we welcome any contribution and look forward to suggestions!
 
 ## Installation
 
@@ -17,16 +17,16 @@ pip install tissue-tag
 ## How to use 
 We supply 2 examples of usage for TissueTag annotations: 
 1) visium spatial transcriptomics
-   in this example we annotate a postnatal thymus dataset by calling the major anatomimcal reagios based on either marker gene expression or manually, then training a random forst classifier for intial prediction follwed by manual corrections and migraiton of annotations back to the visium anndata object.
+   in this example we annotate a postnatal thymus dataset by calling the major anatomical regions based on either marker gene expression or manually, then training a random forest classifier for initial prediction followed by manual corrections and migration of annotations back to the visium anndata object.
    [visium semi-automated tutorial](https://github.com/nadavyayon/TissueTag/blob/main/Tutorials/image_annotation_tutorial_visium_semi_automated.ipynb)
-2) IBEX singel cell multiplex protein imaging
-   in this example we annotate a postnatal thymus image by calling the major anatomimcal reagios and training a random forst classifier for intial prediction follwed by manual corrections
-   [IBEX flourecent tutorial](https://github.com/nadavyayon/TissueTag/blob/main/Tutorials/image_annotation_tutorial_flourscent_final.ipynb)
+2) IBEX single cell multiplex protein imaging
+   in this example we annotate a postnatal thymus image by calling the major anatomical regions and training a random forest classifier for initial prediction followed by manual corrections
+   [IBEX fluorescent tutorial](https://github.com/nadavyayon/TissueTag/blob/main/Tutorials/image_annotation_tutorial_flourscent_final.ipynb)
 
 ## Usage on a cluster vs local machine 
-Bokeh interactive plotting requiered communicaiton between the notebook instance and the browser. 
+Bokeh interactive plotting required communication between the notebook instance and the browser. 
 We have tested the functionality of TissueTag with jupyter lab or jupyter notebooks but have not yet implemented a solution for jupyter hub.
-In addition SSH tunneling is not supported as well but if you are accessing the notebook from outside your institute, VPN access should work fine. 
+In addition SSH tunnelling is not supported as well but if you are accessing the notebook from outside your institute, VPN access should work fine. 
 
 When using a local machine the `show` function from bokeh should work with:
 `show(app,notebook_url='localhost:8888')` 
@@ -38,3 +38,5 @@ where `host` is your port number e.g. 5011
 
 ## How to cite:
 preprint coming! stay tuned
+
+
