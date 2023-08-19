@@ -3,7 +3,12 @@
 </p>
 
 # Tissue Tag jupyter image annotator
-A jupyter-based image annotation tool - TissueTag is powered by the Bokeh python library (http://www.bokeh.pydata.org) and provides a simple annotation solution with subpixel resolution for fast interactive annotation of any image type or kind (brightfield, fluorescence, etc) as well as spatial omics. TissueTag generates discrete annotations (e.g. cortex, medulla etc) but can also output the euclidean distance of each spot/cell to the closest part of a given morphological structure, enabling continuous annotation. This thus holds spatial neighbourhood information that goes beyond the x-y coordinates of a given spot or cell. 
+A jupyter-based image annotation tool - TissueTag is powered by the Bokeh python library (http://www.bokeh.pydata.org) and provides a simple annotation solution with subpixel resolution for fast interactive annotation of any image type or kind (brightfield, fluorescence, etc) as well as spatial omics. TissueTag generates discrete annotations (e.g. cortex, medulla etc) but can also output the euclidean distance of each spot/cell to the closest part of a given morphological structure, enabling continuous annotation. This thus holds spatial neighbourhood information that goes beyond the x-y coordinates of a given spot or cell.
+
+## Tools 
+1) Annotator: This tool allows for the interactive annotation of predefined anatomical objects through convex shape filling.
+2) Scribbler: Aimed at "scribbling" broad labels on an image, this tool uses these labels to subsequently train a pixel classifier on the rest of the image.
+3) Poly Annotator: Designed for labeling discrete, repetitive objects (e.g., lobules or separate compartments or cells), this tool generates polygons around objects and assigns labels to the discrete structures based on the number of objects (e.g., lobule_0, lobule_1, etc.).
 
 ### We see this tool as a basic start and feel there are many useful applications that could be added, so we welcome any contribution and look forward to suggestions!
 
@@ -15,11 +20,13 @@ A jupyter-based image annotation tool - TissueTag is powered by the Bokeh python
 pip install tissue-tag
 ```
 ## How to use 
-We supply 2 examples of usage for TissueTag annotations: 
-1) visium spatial transcriptomics
-   in this example we annotate a postnatal thymus dataset by calling the major anatomical regions based on either marker gene expression or manually, then training a random forest classifier for initial prediction followed by manual corrections and migration of annotations back to the visium anndata object.
+We supply 3 examples of usage for TissueTag annotations: 
+1) visium spatial transcriptomics (manual) -  
+   in this simple example we annotate a postnatal thymus dataset by calling the major anatomical regions manually and migration of the annotations back to the visium anndata object.
+   [visium manual tutorial](https://github.com/nadavyayon/TissueTag/blob/main/Tutorials/image_annotation_tutorial_visium_manual_v1.ipynb)
+2) visium spatial transcriptomics (semi automated) - in this more advanced sample we annotate a postnatal thymus dataset by calling the major anatomical regions based on marker gene expression, then training a random forest classifier for initial prediction followed by manual corrections and migration of the annotations back to the visium anndata object.
    [visium semi-automated tutorial](https://github.com/nadavyayon/TissueTag/blob/main/Tutorials/image_annotation_tutorial_visium_semi_automated.ipynb)
-2) IBEX single cell multiplex protein imaging
+3) IBEX single cell multiplex protein imaging - 
    in this example we annotate a postnatal thymus image by calling the major anatomical regions and training a random forest classifier for initial prediction followed by manual corrections
    [IBEX fluorescent tutorial](https://github.com/nadavyayon/TissueTag/blob/main/Tutorials/image_annotation_tutorial_flourscent_final.ipynb)
 
