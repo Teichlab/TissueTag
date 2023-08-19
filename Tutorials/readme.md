@@ -6,3 +6,7 @@
 2) install tissuetag, scanpy and jupyterlab `pip install tissue-tag` `pip install scanpy` `conda install -c conda-forge jupyterlab`
 
 3) install kernel  `ipython kernel install --name tissuetag --user`
+
+## note 
+if the plot is not fully displayed hover over the plot are and select "Disable Scrolling for Outputs"
+
