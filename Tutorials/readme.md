@@ -8,5 +8,6 @@
 3) install kernel  `ipython kernel install --name tissuetag --user`
 
 ## note 
-if the plot is not fully displayed hover over the plot are and select "Disable Scrolling for Outputs"
+# if the plot is not fully displayed hover over the plot, right click, and select "Disable Scrolling for Outputs"
+
 
