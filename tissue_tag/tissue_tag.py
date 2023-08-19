@@ -132,6 +132,7 @@ def read_visium(
     fullres_path = None,
     header = None,
     plot = True,
+    in_tissue = True,
 ):
     """
     Reads 10X Visium image data from SpaceRanger (v1.3.0).
@@ -154,6 +155,8 @@ def read_visium(
         newer SpaceRanger could need this to be set as 0. Default is None. 
     plot : Boolean 
         if to plot the visium object to scale
+    in_tissue : Boolean
+        if to take only tissue spots or all visium spots
 
     Returns
     -------
@@ -179,14 +182,16 @@ def read_visium(
     df = pd.read_csv(spaceranger_dir_path+'spatial/tissue_positions_list.csv',header=header)
     if header==0: 
         df = df.set_index(keys='barcode')
-        df = df[df['in_tissue']>0] # in tissue
+        if in_tissue:
+            df = df[df['in_tissue']>0] # in tissue
          # turn df to mu
         fullres_ppm = scalef['spot_diameter_fullres']/spotsize
         df['pxl_row_in_fullres'] = df['pxl_row_in_fullres']/fullres_ppm
         df['pxl_col_in_fullres'] = df['pxl_col_in_fullres']/fullres_ppm
     else:
         df = df.set_index(keys=0)
-        df = df[df[1]>0] # in tissue
+        if in_tissue:
+            df = df[df[1]>0] # in tissue
          # turn df to mu
         fullres_ppm = scalef['spot_diameter_fullres']/spotsize
         df['pxl_row_in_fullres'] = df[4]/fullres_ppm
