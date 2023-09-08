@@ -934,7 +934,7 @@ def anno_to_visium_spots(df_spots, df_grid, ppm, plot=True,how='nearest',max_dis
         plt.title('Morpho space')
         plt.show()
     
-    annotations = df_grid.columns[~df_grid.columns.isin(['x', 'y'])]
+    annotations = df_grid.columns[~df_grid.columns.isin(['x', 'y'])].copy()
     
     for k in annotations:
         print('Migrating - ' + k + ' to segmentations.')
@@ -1307,7 +1307,7 @@ def anno_transfer(df_spots, df_grid, ppm_spots, ppm_grid, plot=True, how='neares
     # Create new DataFrame
     new_df_spots = df_spots[['x', 'y']].copy()
     
-    annotations = df_grid.columns[~df_grid.columns.isin(['x', 'y'])]
+    annotations = df_grid.columns[~df_grid.columns.isin(['x', 'y'])].copy()
     
     for k in annotations:
         print('Migrating morphology - ' + k + ' to target space.')
