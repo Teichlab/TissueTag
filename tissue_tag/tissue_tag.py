@@ -1330,7 +1330,8 @@ def anno_transfer(df_spots, df_grid, ppm_spots, ppm_grid, plot=True, how='neares
 
 def anno_to_grid(folder, file_name, spot_diameter, load_colors=False,null_number=1):
     """
-    Load annotations and transform them into a spot grid.
+    Load annotations and transform them into a spot grid, output is always in micron space to make sure distance calculations are correct,
+    or in other words ppm=1.
     
     Parameters
     ----------
@@ -1360,10 +1361,10 @@ def anno_to_grid(folder, file_name, spot_diameter, load_colors=False,null_number
         [anno_order],
         spot_diameter,
         ppm,
-        ppm,
+        1,
     )
 
-    return df,ppm
+    return df
 
 
 def map_annotations_to_visium(vis_path, df_grid, ppm_grid, spot_diameter, plot=True, how='nearest', max_distance_factor=50, use_resolution='hires', res_in_ppm=1, count_file='raw_feature_bc_matrix.h5'):
