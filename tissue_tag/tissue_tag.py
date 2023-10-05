@@ -805,7 +805,7 @@ def grid_anno(
     return df
 
 
-def dist2cluster_fast(df,ppm, annotation, KNN=5, logscale=False):
+def dist2cluster_fast(df, annotation, KNN=5, logscale=False):
     from scipy.spatial import cKDTree
 
     print('calculating distance matrix with cKDTree')
@@ -825,9 +825,9 @@ def dist2cluster_fast(df,ppm, annotation, KNN=5, logscale=False):
             distances, _ = tree.query(points, k=KNN)
             # Store the mean distance for each point to the current category
             if KNN == 1:
-                Dist2ClusterAll[c] = distances/ppm # No need to take mean if only one neighbor
+                Dist2ClusterAll[c] = distances # No need to take mean if only one neighbor
             else:
-                Dist2ClusterAll[c] = np.mean(distances, axis=1)/ppm
+                Dist2ClusterAll[c] = np.mean(distances, axis=1)
 
     for c in categories:              
         if logscale:
