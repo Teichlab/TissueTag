@@ -10,5 +10,3 @@
 ## note 
 # if the plot is not fully displayed hover over the plot, right click, and select "Disable Scrolling for Outputs"
 
-
-add os.environ['BOKEH_ALLOW_WS_ORIGIN']="*"
