@@ -1600,3 +1600,101 @@ def read_visium_table(vis_path):
     df_visium_spot.set_index('barcode', inplace=True)
 
     return df_visium_spot, ppm
+
+
+def calculate_axis_3p(df_ibex, anno, structure, output_col, w=[0.5,0.5], prefix='L2_dist_'):
+    """
+    Function to calculate a unimodal nomralized axis based on ordered structure of S1 -> S2 -> S3.
+
+    Parameters:
+    -----------
+    df_ibex : DataFrame
+        Input DataFrame that contains the data.
+    anno : str, optional
+        Annotation column. 
+    structure : list of str, optional
+        List of structures to be meausure. [S1, S2, S3]
+    w : list of float, optional
+        List of weights between the 2 components of the axis w[0] * S1->S2 and w[1] * S2->S3. Default is [0.2,0.8].
+    prefix : str, optional
+        Prefix for the column names in DataFrame. Default is 'L2_dist_'.
+    output_col : str, optional
+        Name of the output column.
+
+    Returns:
+    --------
+    df : DataFrame
+        DataFrame with calculated new column.
+    """
+    df = df_ibex.copy()
+    a1 = (df[prefix + anno +'_'+ structure[0]] - df[prefix + anno +'_'+ structure[1]]) \
+    /(df[prefix + anno +'_'+ structure[0]] + df[prefix + anno +'_'+ structure[1]])
+    
+    a2 = (df[prefix + anno +'_'+ structure[1]] - df[prefix + anno +'_'+ structure[2]]) \
+    /(df[prefix + anno +'_'+ structure[1]] + df[prefix + anno +'_'+ structure[2]])
+    df[output_col] = w[0]*a1 + w[1]*a2
+    
+    return df
+
+
+def calculate_axis_2p(df_ibex, anno, structure, output_col, prefix='L2_dist_'):
+    """
+    Function to calculate a unimodal nomralized axis based on ordered structure of S1 -> S2 .
+
+    Parameters:
+    -----------
+    df_ibex : DataFrame
+        Input DataFrame that contains the data.
+    anno : str, optional
+        Annotation column. 
+    structure : list of str, optional
+        List of structures to be meausure. [S1, S2]
+    prefix : str, optional
+        Prefix for the column names in DataFrame. Default is 'L2_dist_'.
+    output_col : str, optional
+        Name of the output column.
+
+    Returns:
+    --------
+    df : DataFrame
+        DataFrame with calculated new column.
+    """
+    df = df_ibex.copy()
+    a1 = (df[prefix + anno +'_'+ structure[0]] - df[prefix + anno +'_'+ structure[1]]) \
+    /(df[prefix + anno +'_'+ structure[0]] + df[prefix + anno +'_'+ structure[1]])
+
+    df[output_col] = a1 
+    
+    return df
+
+def bin_axis(ct_order, cutoff_values, df, axis_anno_name):
+    """
+    Bins a column of a DataFrame based on cutoff values and assigns manual bin labels.
+
+    Parameters:
+        ct_order (list): The order of manual bin labels.
+        cutoff_values (list): The cutoff values used for binning.
+        df (pandas.DataFrame): The DataFrame containing the column to be binned.
+        axis_anno_name (str): The name of the column to be binned.
+
+    Returns:
+        pandas.DataFrame: The modified DataFrame with manual bin labels assigned.
+    """
+    # Manual annotations
+    df['manual_bin_' + axis_anno_name] = 'unassigned'
+    df['manual_bin_' + axis_anno_name] = df['manual_bin_' + axis_anno_name].astype('object')
+    df.loc[np.array(df[axis_anno_name] < cutoff_values[0]), 'manual_bin_' + axis_anno_name] = ct_order[0]
+    print(ct_order[0] + '= (' + str(cutoff_values[0]) + '>' + axis_anno_name + ')')
+    
+    for idx, r in enumerate(cutoff_values[:-1]):
+        df.loc[np.array(df[axis_anno_name] >= cutoff_values[idx]) & np.array(df[axis_anno_name] < cutoff_values[idx+1]),
+               'manual_bin_' + axis_anno_name] = ct_order[idx+1]
+        print(ct_order[idx+1] + '= (' + str(cutoff_values[idx]) + '<=' + axis_anno_name + ') & (' + str(cutoff_values[idx+1]) + '>' + axis_anno_name + ')' )
+
+    df.loc[np.array(df[axis_anno_name] >= cutoff_values[-1]), 'manual_bin_' + axis_anno_name] = ct_order[-1]
+    print(ct_order[-1] + '= (' + str(cutoff_values[-1]) + '=<' + axis_anno_name + ')')
+
+    df['manual_bin_' + axis_anno_name] = df['manual_bin_' + axis_anno_name].astype('category')
+    df['manual_bin_' + axis_anno_name + '_int'] = df['manual_bin_' + axis_anno_name].cat.codes
+
+    return df
