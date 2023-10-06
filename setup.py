@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name='tissue-tag',
-    version='0.1.6',
+    version='0.1.8',
     packages=find_packages(),
     install_requires=[
         'opencv-python',
@@ -17,6 +17,7 @@ setup(
         'scipy',
         'scikit-image',
         'tqdm',
+        'scikit-learn',
     ],
     author='Oren Amsalem, Nadav Yayon',
     author_email='nadav.yayon@mail.huji.ac.il',
