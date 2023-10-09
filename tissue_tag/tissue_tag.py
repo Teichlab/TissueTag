@@ -1514,7 +1514,7 @@ def annotate_l2(df_target, df_grid, annotation='annotations_level_0', KNN=10, ma
 
 
 
-def map_annotations_to_target(df_source, df_target, ppm_source,ppm_target, plot=True, how='nearest', max_distance=50):
+def map_annotations_to_target(df_source, df_target,ppm_target,  ppm_source=1, plot=True, how='nearest', max_distance=50):
     """
     map annotations to any form of of csv where you have x y cooodinates spot df (cells or spots) data with high-resolution grid.
     note! - xy coordinates must be named 'x' and 'y'
@@ -1577,8 +1577,8 @@ def map_annotations_to_target(df_source, df_target, ppm_source,ppm_target, plot=
         distances, _ = tree.query(b.T, distance_upper_bound=max_distance)
         
         # Mask df_spots where the distance is too high
-        df_target[k][distances==np.inf] = None
-  
+        df_target.loc[distances == np.inf, k] = None
+
     return df_target
 
 
