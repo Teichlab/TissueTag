@@ -6,7 +6,7 @@
 
 TissueTag consists of two major components:
 1) **Jupyter-based image annotation tool**: Utilizing the Bokeh Python library (http://www.bokeh.pydata.org), this tool offers a streamlined annotation solution with subpixel resolution for quick interactive annotation of various image types (e.g., brightfield, fluorescence). TissueTag produces labeled images (e.g., cortex, medulla) and logs all tissue labels and annotation resolutions for reproducibility.
-2) **Mapping annotations to data**: This component facilitates the migration of annotations to spots/cells based on overlap with annotated structures. It also logs the minimum Euclidean distance of each spot/cell to the discrete annotations, offering continuous annotation. This contains spatial neighborhood information, enriching the x-y coordinates of a given spot or cell, and is foundational for calculating a morphological axis (see tutorials).
+2) **Mapping annotations to data**: This component facilitates the migration of annotations to spots/cells based on overlap with annotated structures. It also logs the minimum Euclidean distance of each spot/cell to the discrete annotations, offering continuous annotation. This contains spatial neighborhood information, enriching the x-y coordinates of a given spot or cell, and is foundational for calculating a morphological axis (OrganAxis, see tutorials).
 
 *Note: A labeled image is an integer array where each pixel value (0,1,2,...) corresponds to an annotated structure.*
 
@@ -33,8 +33,7 @@ We supply 3 examples of usage for TissueTag annotations:
    [visium semi-automated tutorial](https://github.com/nadavyayon/TissueTag/blob/main/Tutorials/image_annotation_tutorial_visium_semi_automated.ipynb)
 3) IBEX single cell multiplex protein imaging - 
    in this example we annotate a postnatal thymus image by calling the major anatomical regions and training a random forest classifier for initial prediction followed by manual corrections
-   [IBEX fluorescent tutorial](https://github.com/nadavyayon/TissueTag/blob/main/Tutorials/image_annotation_tutorial_flourscent_final.ipynb)
-
+   [IBEX annotation tutorial](https://github.com/nadavyayon/TissueTag/blob/main/Tutorials/demo_flourscent_annotation_git.ipynb). Next, we show how one can migrate these annotations to segmented cells and calulcate a morphological axis (OrganAxis) [IBEX mapping annotations tutorial](https://github.com/nadavyayon/TissueTag/blob/main/Tutorials/demo_flourscent_map_annotations_to_cells_git.ipynb). 
 ## Usage on a cluster vs local machine 
 Bokeh interactive plotting required communication between the notebook instance and the browser. 
 We have tested the functionality of TissueTag with jupyter lab or jupyter notebooks but have not yet implemented a solution for jupyter hub.
