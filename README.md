@@ -1,16 +1,21 @@
 <p align="center">
-	<img src="https://github.com/nadavyayon/TissueTag/blob/main/tissueTag_logo.png" width="300" >
+	<img src="https://github.com/nadavyayon/TissueTag/blob/main/tissueTag_logo.png" width="300">
 </p>
 
-# Tissue Tag jupyter image annotator
-A jupyter-based image annotation tool - TissueTag is powered by the Bokeh python library (http://www.bokeh.pydata.org) and provides a simple annotation solution with subpixel resolution for fast interactive annotation of any image type or kind (brightfield, fluorescence, etc) as well as spatial omics. TissueTag generates discrete annotations (e.g. cortex, medulla etc) but can also output the euclidean distance of each spot/cell to the closest part of a given morphological structure, enabling continuous annotation. This thus holds spatial neighbourhood information that goes beyond the x-y coordinates of a given spot or cell.
+# TissueTag: Jupyter Image Annotator
+
+TissueTag consists of two major components:
+1) **Jupyter-based image annotation tool**: Utilizing the Bokeh Python library (http://www.bokeh.pydata.org), this tool offers a streamlined annotation solution with subpixel resolution for quick interactive annotation of various image types (e.g., brightfield, fluorescence). TissueTag produces labeled images (e.g., cortex, medulla) and logs all tissue labels and annotation resolutions for reproducibility.
+2) **Mapping annotations to data**: This component facilitates the migration of annotations to spots/cells based on overlap with annotated structures. It also logs the minimum Euclidean distance of each spot/cell to the discrete annotations, offering continuous annotation. This contains spatial neighborhood information, enriching the x-y coordinates of a given spot or cell, and is foundational for calculating a morphological axis (see tutorials).
+
+*Note: A labeled image is an integer array where each pixel value (0,1,2,...) corresponds to an annotated structure.*
 
 ## Tools 
-1) Annotator: This tool allows for the interactive annotation of predefined anatomical objects through convex shape filling.
-2) Scribbler: Aimed at "scribbling" broad labels on an image, this tool uses these labels to subsequently train a pixel classifier on the rest of the image.
-3) Poly Annotator: Designed for labeling discrete, repetitive objects (e.g., lobules or separate compartments or cells), this tool generates polygons around objects and assigns labels to the discrete structures based on the number of objects (e.g., lobule_0, lobule_1, etc.).
+1) **Annotator**: Enables interactive annotation of predefined anatomical objects via convex shape filling.
+2) **Scribbler**: Designed for broadly labeling an image. It uses these labels to train a pixel classifier on the remainder of the image.
+3) **Poly Annotator**: Suited for labeling discrete, repetitive objects (e.g., lobules or separate compartments), this tool creates polygons around objects and labels them based on the object count (e.g., lobule_0, lobule_1).
 
-### We see this tool as a basic start and feel there are many useful applications that could be added, so we welcome any contribution and look forward to suggestions!
+We envision this tool as a foundational starting point. We believe there are many potential enhancements and additions, so contributions and suggestions are highly appreciated!
 
 ## Installation
 
