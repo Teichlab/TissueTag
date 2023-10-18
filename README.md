@@ -25,12 +25,10 @@ We envision this tool as a foundational starting point. We believe there are man
 pip install tissue-tag
 ```
 ## How to use 
-We supply 3 examples of usage for TissueTag annotations: 
-1) visium spatial transcriptomics (manual) -  
-   in this simple example we annotate a postnatal thymus dataset by calling the major anatomical regions manually and migration of the annotations back to the visium anndata object.
-   [visium manual tutorial](https://github.com/nadavyayon/TissueTag/blob/main/Tutorials/image_annotation_tutorial_visium_manual_v1.ipynb)
-2) visium spatial transcriptomics (semi automated) - in this more advanced sample we annotate a postnatal thymus dataset by calling the major anatomical regions based on marker gene expression, then training a random forest classifier for initial prediction followed by manual corrections and migration of the annotations back to the visium anndata object.
-   [visium semi-automated tutorial](https://github.com/nadavyayon/TissueTag/blob/main/Tutorials/image_annotation_tutorial_visium_semi_automated.ipynb)
+We supply some examples of usage for TissueTag annotations: 
+1) visium spatial transcriptomics -  
+   in this example we annotate a postnatal thymus dataset by calling the major anatomical regions in multiple ways (based on marker gene expression or sprse manual annotations) then training a random forest classifier for initial prediction followed by manual corrections [visium annotation tutorial](https://github.com/nadavyayon/TissueTag/blob/main/Tutorials/demo_visium_annotation_git.ipynb) and migration of the annotations back to the visium anndata object [mapping annotations to visium](https://github.com/nadavyayon/TissueTag/blob/main/Tutorials/demo_visium_map_annotation_to_spots_git.ipynb).
+   We also show how to calulcate a morphological axis (OrganAxis) in 2 ways. 
 3) IBEX single cell multiplex protein imaging - 
    in this example we annotate a postnatal thymus image by calling the major anatomical regions and training a random forest classifier for initial prediction followed by manual corrections
    [IBEX annotation tutorial](https://github.com/nadavyayon/TissueTag/blob/main/Tutorials/demo_flourscent_annotation_git.ipynb). Next, we show how one can migrate these annotations to segmented cells and calulcate a morphological axis (OrganAxis) [IBEX mapping annotations tutorial](https://github.com/nadavyayon/TissueTag/blob/main/Tutorials/demo_flourscent_map_annotations_to_cells_git.ipynb). 
