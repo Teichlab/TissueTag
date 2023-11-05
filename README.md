@@ -46,6 +46,6 @@ when using a cluster job with an interactive jupyter lab or jupyter notebook you
 where `host` is your port number e.g. 5011
 
 ## How to cite:
-preprint coming! stay tuned
+please cite the following preprint - https://www.biorxiv.org/content/10.1101/2023.10.25.562925v1
 
 
