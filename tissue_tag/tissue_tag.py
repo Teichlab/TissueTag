@@ -13,6 +13,9 @@ import seaborn as sns
 import skimage
 import warnings
 import os
+import holoviews as hv
+import holoviews.operation.datashader as hd
+import panel as pn
 from bokeh.models import FreehandDrawTool, PolyDrawTool, PolyEditTool,TabPanel, Tabs
 from bokeh.plotting import figure, show
 from functools import partial
@@ -25,7 +28,7 @@ from skimage import data, feature, future, segmentation
 from skimage.draw import polygon, disk
 from sklearn.ensemble import RandomForestClassifier
 from tqdm import tqdm
-
+hv.extension('bokeh')
 
 try:
     import scanpy as scread_visium
@@ -35,6 +38,80 @@ except ImportError:
 Image.MAX_IMAGE_PIXELS = None
 
 font_path = fm.findfont('DejaVu Sans')
+
+class CustomFreehandDraw(hv.streams.FreehandDraw):
+    """
+    This custom class adds the ability to customise the icon for the FreeHandDraw tool.
+    """
+
+    def __init__(self, empty_value=None, num_objects=0, styles=None, tooltip=None, icon_colour="black", **params):
+        self.icon_colour = icon_colour
+        super().__init__(empty_value, num_objects, styles, tooltip, **params)
+
+class CustomFreehandDrawCallback(hv.plotting.bokeh.callbacks.PolyDrawCallback):
+    """
+    This custom class is the corresponding callback for the CustomFreeHandDraw which will render a custom icon for
+    the FreeHandDraw tool.
+    """
+
+    def initialize(self, plot_id=None):
+        plot = self.plot
+        cds = plot.handles['cds']
+        glyph = plot.handles['glyph']
+        stream = self.streams[0]
+        if stream.styles:
+            self._create_style_callback(cds, glyph)
+        kwargs = {}
+        if stream.tooltip:
+            kwargs['description'] = stream.tooltip
+        if stream.empty_value is not None:
+            kwargs['empty_value'] = stream.empty_value
+        kwargs['icon'] = create_icon(stream.tooltip[0], stream.icon_colour)
+        poly_tool = FreehandDrawTool(
+            num_objects=stream.num_objects,
+            renderers=[plot.handles['glyph_renderer']],
+            **kwargs
+        )
+        plot.state.tools.append(poly_tool)
+        self._update_cds_vdims(cds.data)
+        hv.plotting.bokeh.callbacks.CDSCallback.initialize(self, plot_id)
+
+
+# Overload the callback from holoviews to use the custom FreeHandDrawCallback class instead of the default class.
+hv.plotting.bokeh.callbacks.Stream._callbacks['bokeh'].update({CustomFreehandDraw: CustomFreehandDrawCallback})
+
+class SynchronisedFreehandDrawLink(hv.plotting.links.Link):
+    """
+    This custom class is a helper designed for creating synchronised FreehandDraw tools.
+    """
+
+    _requires_target = True
+
+class SynchronisedFreehandDrawCallback(hv.plotting.bokeh.LinkCallback):
+    """
+    This custom class implements the method to synchronise data between two FreehandDraw tools by manually updating
+    the data_source of the linked tools.
+    """
+
+    source_model = "cds"
+    source_handles = ["plot"]
+    target_model = "cds"
+    target_handles = ["plot"]
+    on_source_changes = ["data"]
+    on_target_changes = ["data"]
+
+    source_code = """
+        target_cds.data = source_cds.data
+        target_cds.change.emit()
+    """
+
+    target_code = """
+        source_cds.data = target_cds.data
+        source_cds.change.emit()
+    """
+
+# Register the callback class to the link class
+SynchronisedFreehandDrawLink.register_callback('bokeh', SynchronisedFreehandDrawCallback)
 
 def to_base64(img):
     buffered = BytesIO()
@@ -228,9 +305,9 @@ def read_visium(
     return np.array(im), ppm, df
 
 
-def scribbler(imarray, anno_dict, plot_size=1024):
+def scribbler(imarray, anno_dict, plot_size=1024, use_datashader=False):
     """
-    Creates interactive scribble line annotations with Bokeh.
+    Creates interactive scribble line annotations with Holoviews.
 
     Parameters
     ----------
@@ -240,41 +317,51 @@ def scribbler(imarray, anno_dict, plot_size=1024):
         Dictionary of structures to annotate and colors for the structures.
     plot_size : int, optional
         Used to adjust the plotting area size. Default is 1024.
+    use_datashader : Boolean, optional
+        If we should use datashader for rendering the image. Recommended for high resolution image. Default is False.
 
     Returns
     -------
-    bokeh.plotting.Figure
-        A Bokeh figure with interactive annotations.
+    holoviews.core.overlay.Overlay
+        A Holoviews overlay composed of the image and annotation layers.
     dict
         Dictionary of renderers for each annotation.
     """
 
     imarray_c = imarray.astype('uint8').copy()
-    np_img2d = imarray_c.view("uint32").reshape(imarray_c.shape[:2])
+    imarray_c = np.flip(imarray_c, 0)
 
-    # Create a new bokeh figure
-    p =  figure(width=int(plot_size), height=int(plot_size), match_aspect=True)
+    # Create a new holoview image
+    img = hv.RGB(imarray_c, bounds=(0, 0, imarray_c.shape[1], imarray_c.shape[0]))
+    if use_datashader:
+        img = hd.regrid(img)
+    ds_img = img.options(aspect="equal", frame_height=int(plot_size), frame_width=int(plot_size))
 
-    # Add image to the figure
-    p.image_rgba(image=[np_img2d], x=0, y=0, dw=imarray_c.shape[1], dh=imarray_c.shape[0])
+    # Create the plot list object
+    plot_list = [ds_img]
+
+    # Render plot using bokeh backend
+    p = hv.render(img.options(aspect="equal", frame_height=int(plot_size), frame_width=int(plot_size)),
+                  backend="bokeh")
 
     render_dict = {}
-    draw_tool_dict = {}
+    path_dict = {}
     for key in anno_dict.keys():
-        render_dict[key] = p.multi_line([], [], line_width=5, alpha=0.4, color=anno_dict[key])
-        draw_tool = FreehandDrawTool(renderers=[render_dict[key]], num_objects=200, icon=create_icon(key[0],anno_dict[key]))
-        draw_tool.description = key
-        p.add_tools(draw_tool)
-        draw_tool_dict[key] = draw_tool
+        path_dict[key] = hv.Path([]).opts(color=anno_dict[key], line_width=5, line_alpha=0.4)
+        render_dict[key] = CustomFreehandDraw(source=path_dict[key], num_objects=200, tooltip=key,
+                                              icon_colour=anno_dict[key])
+        plot_list.append(path_dict[key])
+
+    # Create the plot from the plot list
+    p = hd.Overlay(plot_list).collate()
 
     return p, render_dict
 
 
 
-def annotator(imarray, annotation, anno_dict, plot_size=1024,invert_y=False):
+def annotator(imarray, annotation, anno_dict, plot_size=1024,invert_y=False,use_datashader=False):
     """
-    Interactive annotation tool with line annotations using Bokeh tabs for toggling between morphology and annotation.
-    The principle is that selecting closed/semi-closed shapes that will later be filled according to the proper annotation.
+    Interactive annotation tool with line annotations using Panel tabs for toggling between morphology and annotation.
 
     Parameters
     ----------
@@ -288,57 +375,59 @@ def annotator(imarray, annotation, anno_dict, plot_size=1024,invert_y=False):
         Figure size for plotting.
     invert_y :boolean
         invert plot along y axis
+    use_datashader : Boolean, optional
+        If we should use datashader for rendering the image. Recommended for high resolution image. Default is False.
 
     Returns
     -------
-    Bokeh Tabs object
-        Interactive tabs for annotating image.
+    Panel Column object
+        A Column object containing the overlay opacity control and image with annotation layers.
     dict
         Dictionary of Bokeh renderers for each annotation.
     """
-    from bokeh.models import ColumnDataSource, TabPanel, Tabs, FreehandDrawTool
-    from bokeh.plotting import figure
-    from bokeh.core.properties import field
+    annotation_c = annotation.astype('uint8').copy()
+    if not invert_y:
+        annotation_c = np.flip(annotation_c, 0)
 
-    # Tab1
-    imarray_c = annotation.copy()
-    np_img2d = imarray_c.view("uint32").reshape(imarray_c.shape[:2])
-    p = figure(width=plot_size, height=plot_size, match_aspect=True)
-    p.quad(top=e[1:], bottom=e[:-1], left=0, right=h) if invert_y else None
-    p.image_rgba(image=[np_img2d], x=0, y=0, dw=imarray_c.shape[1], dh=imarray_c.shape[0])
-    tab1 = TabPanel(child=p, title="Annotation")
+    imarray_c = imarray.astype('uint8').copy()
+    if not invert_y:
+        imarray_c = np.flip(imarray_c, 0)
 
-    # Tab2
-    imarray_c = imarray.copy()
-    np_img2d = imarray_c.view("uint32").reshape(imarray_c.shape[:2])
-    p1 = figure(width=plot_size, height=plot_size, match_aspect=True, x_range=p.x_range, y_range=p.y_range)
-    p1.quad(top=e[1:], bottom=e[:-1], left=0, right=h) if invert_y else None
-    p1.image_rgba(image=[np_img2d], x=0, y=0, dw=imarray_c.shape[1], dh=imarray_c.shape[0])
-    tab2 = TabPanel(child=p1, title="Image")
+    # Create new holoview images
+    anno = hv.RGB(annotation_c, bounds=(0, 0, annotation_c.shape[1], annotation_c.shape[0]))
+    if use_datashader:
+        anno = hd.regrid(anno)
+    ds_anno = anno.options(aspect="equal", frame_height=int(plot_size), frame_width=int(plot_size))
+
+    img = hv.RGB(imarray_c, bounds=(0, 0, imarray_c.shape[1], imarray_c.shape[0]))
+    if use_datashader:
+        img = hd.regrid(img)
+    ds_img = img.options(aspect="equal", frame_height=int(plot_size), frame_width=int(plot_size))
+
+    anno_tab_plot_list = [ds_anno]
+    img_tab_plot_list = [ds_img]
 
     render_dict = {}
-    draw_tool_dict = {}
-    source_data_dict = {}
+    img_render_dict = {}
+    path_dict = {}
+    img_path_dict = {}
+    for key in anno_dict.keys():
+        path_dict[key] = hv.Path([]).opts(color=anno_dict[key], line_width=5, line_alpha=0.4)
+        render_dict[key] = CustomFreehandDraw(source=path_dict[key], num_objects=200, tooltip=key,
+                                              icon_colour=anno_dict[key])
 
-    for l in anno_dict.keys():
-        draw_source = ColumnDataSource(data=dict(xs=[], ys=[]))
+        img_path_dict[key] = hv.Path([]).opts(color=anno_dict[key], line_width=5, line_alpha=0.4)
+        img_render_dict[key] = CustomFreehandDraw(source=img_path_dict[key], num_objects=200, tooltip=key,
+                                              icon_colour=anno_dict[key])
 
-        # For Tab1
-        render_dict[l] = p.multi_line(field("xs"), field("ys"), line_width=3, alpha=0.4, color=anno_dict[l], source=draw_source)
-        draw_tool_dict[l] = FreehandDrawTool(renderers=[render_dict[l]], num_objects=100, icon=create_icon(l[0], anno_dict[l]))
-        draw_tool_dict[l].description = l
-        p.add_tools(draw_tool_dict[l])
+        SynchronisedFreehandDrawLink(path_dict[key], img_path_dict[key])
+        anno_tab_plot_list.append(path_dict[key])
+        img_tab_plot_list.append(img_path_dict[key])
 
-        # For Tab2
-        render = p1.multi_line(field("xs"), field("ys"), line_width=3, alpha=0.4, color=anno_dict[l], source=draw_source)
-        draw_tool = FreehandDrawTool(renderers=[render], num_objects=100, icon=create_icon(l[0], anno_dict[l]))
-        draw_tool.description = l
-        p1.add_tools(draw_tool)
-
-        source_data_dict[l] = draw_source
-
-    tabs = Tabs(tabs=[tab1, tab2])
-    return tabs, render_dict
+    # Create the tabbed view
+    p = pn.Tabs(("Annotation", pn.panel(hd.Overlay(anno_tab_plot_list).collate())),
+                ("Image", pn.panel(hd.Overlay(img_tab_plot_list).collate())), dynamic=False)
+    return p, render_dict
 
 
 def complete_pixel_gaps(x,y):
@@ -414,16 +503,16 @@ def scribble_to_labels(imarray, render_dict, line_width=10):
         ys = []
         annotations[a] = []
 
-        for o in range(len(render_dict[a].data_source.data['xs'])):
+        for o in range(len(render_dict[a].data['xs'])):
             xt, yt = complete_pixel_gaps(
-                np.array(render_dict[a].data_source.data['xs'][o]).astype(int),
-                np.array(render_dict[a].data_source.data['ys'][o]).astype(int)
+                np.array(render_dict[a].data['xs'][o]).astype(int),
+                np.array(render_dict[a].data['ys'][o]).astype(int)
             )
             xs.extend(xt)
             ys.extend(yt)
             annotations[a].append(np.vstack([
-                np.array(render_dict[a].data_source.data['xs'][o]).astype(int),
-                np.array(render_dict[a].data_source.data['ys'][o]).astype(int)
+                np.array(render_dict[a].data['xs'][o]).astype(int),
+                np.array(render_dict[a].data['ys'][o]).astype(int)
             ]))
 
         xs = np.array(xs)
@@ -550,14 +639,14 @@ def update_annotator(imarray, result, anno_dict, render_dict, alpha):
     
     corrected_labels = result.copy()
     for idx, a in enumerate(render_dict.keys()):
-        if render_dict[a].data_source.data['xs']:
+        if render_dict[a].data['xs']:
             print(a)
-            for o in range(len(render_dict[a].data_source.data['xs'])):
-                x = np.array(render_dict[a].data_source.data['xs'][o]).astype(int)
-                y = np.array(render_dict[a].data_source.data['ys'][o]).astype(int)
+            for o in range(len(render_dict[a].data['xs'])):
+                x = np.array(render_dict[a].data['xs'][o]).astype(int)
+                y = np.array(render_dict[a].data['ys'][o]).astype(int)
                 rr, cc = polygon(y, x)
                 inshape = np.where(np.array(result.shape[0] > rr) & np.array(0 < rr) & np.array(result.shape[1] > cc) & np.array(0 < cc))[0]
-                corrected_labels[rr[inshape], cc[inshape]] = idx + 1 
+                corrected_labels[rr[inshape], cc[inshape]] = idx + 1
                 
     rgb = rgb_from_labels(corrected_labels, list(anno_dict.values()))
     out_img = overlay_labels(imarray, rgb, alpha=alpha, show=False)
