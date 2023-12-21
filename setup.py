@@ -18,6 +18,10 @@ setup(
         'scikit-image',
         'tqdm',
         'scikit-learn',
+        'holoviews',
+        'datashader',
+        'panel',
+        'jupyterlab'
     ],
     author='Oren Amsalem, Nadav Yayon',
     author_email='nadav.yayon@mail.huji.ac.il',
