@@ -1238,7 +1238,7 @@ def object_annotator(imarray, result, anno_dict, render_dict, alpha):
     return corrected_labels, object_dict
 
 
-def gene_labels(adata, df, training_labels, marker_dict, annodict, r, labels_per_marker):
+def gene_labels(adata, df, training_labels, gene_markers, annodict, r):
     """
     Assign labels to training spots based on gene expression.
 
@@ -1250,20 +1250,33 @@ def gene_labels(adata, df, training_labels, marker_dict, annodict, r, labels_per
         DataFrame containing spot coordinates.
     training_labels : numpy.ndarray
         Array for storing the training labels.
-    marker_dict : dict
+    gene_markers : dict
         Dictionary mapping markers to genes.
     annodict : dict
         Dictionary mapping markers to annotation names.
     r : float
         Radius of the spots.
-    labels_per_marker : dict
-        Dictionary mapping markers to the number of labels per marker.
-
     Returns
     -------
     numpy.ndarray
         Array containing the training labels.
     """
+
+    import scanpy
+
+    for m in list(gene_markers.keys()):
+        print(gene_markers[m])
+        GeneIndex = np.where(adata.var_names.str.fullmatch(gene_markers[m][0]))[0]
+        scanpy.pp.normalize_total(adata)
+        GeneData = adata.X[:, GeneIndex].todense()
+        SortedExp = np.argsort(GeneData, axis=0)[::-1]
+        list_gene = adata.obs.index[np.array(np.squeeze(SortedExp[range(gene_markers[m][1])]))[0]]
+        for idx, sub in enumerate(list(annodict.keys())):
+            if sub == m:
+                back = idx
+        for coor in df.loc[list_gene, ['pxl_row','pxl_col']].to_numpy():
+            training_labels[disk((coor[0], coor[1]), r)] = back + 1
+    return training_labels
 
     import scanpy
 
