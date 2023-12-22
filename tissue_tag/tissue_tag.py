@@ -177,6 +177,7 @@ def read_image(
     ppm_out=1,
     contrast_factor=1,
     background_image_path=None,
+    plot=True,
 ):
     """
     Reads an H&E or fluorescent image and returns the image with optional enhancements.
@@ -197,6 +198,8 @@ def read_image(
     background_image_path : str, optional
         Path to a background image. If provided, this image and the input image are combined 
         to create a virtual H&E (vH&E). If not provided, vH&E will not be performed.
+    plot : boolean, optional
+        if to plot the loaded image. default is True.
 
     Returns
     -------
@@ -242,6 +245,10 @@ def read_image(
         # virtual H&E 
         # im2 = im2.convert("RGBA")
         im = simonson_vHE(np.array(im).astype('uint8'),np.array(im2).astype('uint8'))
+    if plot:
+        plt.figure(dpi=100)
+        plt.imshow(im,origin='lower')
+        plt.show()
         
     return np.array(im),ppm_image,ppm_out
 
@@ -402,7 +409,7 @@ def scribbler(imarray, anno_dict, plot_size=1024, use_datashader=False):
 
 
 
-def annotator(imarray, annotation, anno_dict, plot_size=1024,invert_y=False,use_datashader=False):
+def annotator(imarray, labels, anno_dict, plot_size=1024,invert_y=False,use_datashader=False,alpha=0.7):
     """
     Interactive annotation tool with line annotations using Panel tabs for toggling between morphology and annotation.
 
@@ -410,7 +417,7 @@ def annotator(imarray, annotation, anno_dict, plot_size=1024,invert_y=False,use_
     ----------
     imarray: np.array
         Image in numpy array format.
-    annotation: np.array
+    labels: np.array
         Label image in numpy array format.
     anno_dict: dict
         Dictionary of structures to annotate and colors for the structures.
@@ -420,6 +427,8 @@ def annotator(imarray, annotation, anno_dict, plot_size=1024,invert_y=False,use_
         invert plot along y axis
     use_datashader : Boolean, optional
         If we should use datashader for rendering the image. Recommended for high resolution image. Default is False.
+    alpha
+        blending extent of "Annotation" tab
 
     Returns
     -------
@@ -428,6 +437,13 @@ def annotator(imarray, annotation, anno_dict, plot_size=1024,invert_y=False,use_
     dict
         Dictionary of Bokeh renderers for each annotation.
     """
+    import logging
+    logging.getLogger('bokeh.core.validation.check').setLevel(logging.ERROR)
+    
+    # convert label image to rgb for annotation
+    labels_rgb = rgb_from_labels(labels, colors=list(anno_dict.values()))
+    annotation = overlay_labels(imarray,labels_rgb,alpha=alpha,show=False)
+    
     annotation_c = annotation.astype('uint8').copy()
     if not invert_y:
         annotation_c = np.flip(annotation_c, 0)
@@ -597,7 +613,7 @@ def rgb_from_labels(labelimage, colors):
 
 
 
-def sk_rf_classifier(im, training_labels):
+def sk_rf_classifier(im, training_labels,anno_dict,plot=True):
     """
     A simple random forest pixel classifier from sklearn.
     
@@ -607,6 +623,10 @@ def sk_rf_classifier(im, training_labels):
         The actual image to predict the labels from, should be the same size as training_labels.
     training_labels : array
         Label image with pixel values corresponding to labels.
+    anno_dict: dict
+        Dictionary of structures to annotate and colors for the structures.
+     plot : boolean, optional
+        if to plot the loaded image. default is True.
 
     Returns
     -------
@@ -624,7 +644,14 @@ def sk_rf_classifier(im, training_labels):
     clf = RandomForestClassifier(n_estimators=50, n_jobs=-1,
                                  max_depth=10, max_samples=0.05)
     clf = future.fit_segmenter(training_labels, features, clf)
-    return future.predict_segmenter(features, clf)
+    
+    labels = future.predict_segmenter(features, clf)
+    
+    if plot:
+        labels_rgb = rgb_from_labels(labels,colors=list(anno_dict.values()))
+        overlay_labels(im,labels_rgb,alpha=0.7)
+    
+    return labels
 
 def overlay_labels(im1, im2, alpha=0.8, show=True):
     """
@@ -657,7 +684,7 @@ def overlay_labels(im1, im2, alpha=0.8, show=True):
         plt.imshow(out_img,origin='lower')
     return out_img
    
-def update_annotator(imarray, result, anno_dict, render_dict, alpha):
+def update_annotator(imarray, labels, anno_dict, render_dict, alpha=0.5,plot=True):
     """
     Updates annotations and generates overlay (out_img) and the label image (corrected_labels).
         
@@ -665,7 +692,7 @@ def update_annotator(imarray, result, anno_dict, render_dict, alpha):
     ----------
     imarray : numpy.ndarray
         Image in numpy array format.
-    result : numpy.ndarray
+    labels : numpy.ndarray
         Label image in numpy array format.
     anno_dict : dict
         Dictionary of structures to annotate and colors for the structures.
@@ -673,14 +700,15 @@ def update_annotator(imarray, result, anno_dict, render_dict, alpha):
         Bokeh data container.
     alpha : float
         Blending factor.
+    plot
+        if the plot the updated annotations. default is True. 
         
     Returns
     -------
-    tuple
-        Returns the overlay image and corrected labels as a tuple.
+    Returns corrected labels as numpy array.
     """
     
-    corrected_labels = result.copy()
+    corrected_labels = labels.copy()
     for idx, a in enumerate(render_dict.keys()):
         if render_dict[a].data['xs']:
             print(a)
@@ -688,12 +716,13 @@ def update_annotator(imarray, result, anno_dict, render_dict, alpha):
                 x = np.array(render_dict[a].data['xs'][o]).astype(int)
                 y = np.array(render_dict[a].data['ys'][o]).astype(int)
                 rr, cc = polygon(y, x)
-                inshape = np.where(np.array(result.shape[0] > rr) & np.array(0 < rr) & np.array(result.shape[1] > cc) & np.array(0 < cc))[0]
+                inshape = np.where(np.array(labels.shape[0] > rr) & np.array(0 < rr) & np.array(labels.shape[1] > cc) & np.array(0 < cc))[0]
                 corrected_labels[rr[inshape], cc[inshape]] = idx + 1
-                
-    rgb = rgb_from_labels(corrected_labels, list(anno_dict.values()))
-    out_img = overlay_labels(imarray, rgb, alpha=alpha, show=False)
-    return out_img, corrected_labels
+    if plot:            
+        rgb = rgb_from_labels(corrected_labels, list(anno_dict.values()))
+        out_img = overlay_labels(imarray, rgb, alpha=alpha)
+
+    return corrected_labels
 
 
 def rescale_image(label_image, target_size):
@@ -1271,22 +1300,6 @@ def gene_labels(adata, df, training_labels, gene_markers, annodict, r):
         GeneData = adata.X[:, GeneIndex].todense()
         SortedExp = np.argsort(GeneData, axis=0)[::-1]
         list_gene = adata.obs.index[np.array(np.squeeze(SortedExp[range(gene_markers[m][1])]))[0]]
-        for idx, sub in enumerate(list(annodict.keys())):
-            if sub == m:
-                back = idx
-        for coor in df.loc[list_gene, ['pxl_row','pxl_col']].to_numpy():
-            training_labels[disk((coor[0], coor[1]), r)] = back + 1
-    return training_labels
-
-    import scanpy
-
-    for m in list(marker_dict.keys()):
-        print(marker_dict[m])
-        GeneIndex = np.where(adata.var_names.str.fullmatch(marker_dict[m]))[0]
-        scanpy.pp.normalize_total(adata)
-        GeneData = adata.X[:, GeneIndex].todense()
-        SortedExp = np.argsort(GeneData, axis=0)[::-1]
-        list_gene = adata.obs.index[np.array(np.squeeze(SortedExp[range(labels_per_marker[m])]))[0]]
         for idx, sub in enumerate(list(annodict.keys())):
             if sub == m:
                 back = idx
