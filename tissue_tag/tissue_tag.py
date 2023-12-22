@@ -16,7 +16,7 @@ import os
 import holoviews as hv
 import holoviews.operation.datashader as hd
 import panel as pn
-from bokeh.models import FreehandDrawTool, PolyDrawTool, PolyEditTool,TabPanel, Tabs, UndoTool 
+from bokeh.models import FreehandDrawTool, PolyDrawTool, PolyEditTool,TabPanel, Tabs
 from bokeh.plotting import figure, show
 from functools import partial
 from io import BytesIO
