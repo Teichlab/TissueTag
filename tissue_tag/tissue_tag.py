@@ -16,7 +16,7 @@ import os
 import holoviews as hv
 import holoviews.operation.datashader as hd
 import panel as pn
-from bokeh.models import FreehandDrawTool, PolyDrawTool, PolyEditTool,TabPanel, Tabs
+from bokeh.models import FreehandDrawTool, PolyDrawTool, PolyEditTool,TabPanel, Tabs, UndoTool 
 from bokeh.plotting import figure, show
 from functools import partial
 from io import BytesIO
@@ -47,7 +47,8 @@ class CustomFreehandDraw(hv.streams.FreehandDraw):
     def __init__(self, empty_value=None, num_objects=0, styles=None, tooltip=None, icon_colour="black", **params):
         self.icon_colour = icon_colour
         super().__init__(empty_value, num_objects, styles, tooltip, **params)
-
+   
+            # Logic to update plot without last annotation           
 class CustomFreehandDrawCallback(hv.plotting.bokeh.callbacks.PolyDrawCallback):
     """
     This custom class is the corresponding callback for the CustomFreeHandDraw which will render a custom icon for
@@ -408,7 +409,6 @@ def scribbler(imarray, anno_dict, plot_size=1024, use_datashader=False):
     return p, render_dict
 
 
-
 def annotator(imarray, labels, anno_dict, plot_size=1024,invert_y=False,use_datashader=False,alpha=0.7):
     """
     Interactive annotation tool with line annotations using Panel tabs for toggling between morphology and annotation.
@@ -487,6 +487,7 @@ def annotator(imarray, labels, anno_dict, plot_size=1024,invert_y=False,use_data
     p = pn.Tabs(("Annotation", pn.panel(hd.Overlay(anno_tab_plot_list).collate())),
                 ("Image", pn.panel(hd.Overlay(img_tab_plot_list).collate())), dynamic=False)
     return p, render_dict
+
 
 
 def complete_pixel_gaps(x,y):
@@ -889,20 +890,35 @@ def generate_hires_grid(
             image resolution
 
     """
-    
-    helper = spot_diameter*pixels_per_micron
-    X1 = np.linspace(helper,im.shape[0]-helper,round(im.shape[0]/helper))
-    Y1 = np.linspace(helper,im.shape[1]-2*helper,round(im.shape[1]/(2*helper)))
-    X2 = X1 + spot_diameter*pixels_per_micron/2
+    helper = spot_diameter * pixels_per_micron
+    X1 = np.linspace(helper, im.shape[0] - helper, round(im.shape[0] / helper))
+    Y1 = np.linspace(helper, im.shape[1] - 2 * helper, round(im.shape[1] / (2 * helper)))
+    X2 = X1 + spot_diameter * pixels_per_micron / 2
     Y2 = Y1 + helper
-    Gx1, Gy1 = np.meshgrid(X1,Y1)
-    Gx2, Gy2 = np.meshgrid(X2,Y2)
+    Gx1, Gy1 = np.meshgrid(X1, Y1)
+    Gx2, Gy2 = np.meshgrid(X2, Y2)
     positions1 = np.vstack([Gy1.ravel(), Gx1.ravel()])
     positions2 = np.vstack([Gy2.ravel(), Gx2.ravel()])
-    positions = np.hstack([positions1,positions2])
+    positions = np.hstack([positions1, positions2])
     
     return positions
 
+import numpy as np
+import pandas as pd
+import skimage.transform
+import skimage.draw
+import scipy.ndimage
+
+   
+
+def create_disk_kernel(radius, shape):
+    rr, cc = skimage.draw.disk((radius, radius), radius, shape=shape)
+    kernel = np.zeros(shape, dtype=bool)
+    kernel[rr, cc] = True
+    return kernel
+
+def apply_median_filter(image, kernel):
+    return scipy.ndimage.median_filter(image, footprint=kernel)
 
 def grid_anno(
     im,
@@ -912,58 +928,34 @@ def grid_anno(
     spot_diameter,
     ppm_in,
     ppm_out,
-    
 ):
-    """
-        transfer annotations to spot grid 
-        
-        Parameters
-        ---------- 
-        im 
-            Original image (for resizing annotations)
-        annotation_image_list
-            list of images with annotations in the form of integer corresponding to labels   
-        annotation_image_names
-            list of image names with annotations in the form of strings corresponding to images 
-        annotation_label_list
-            list of dictionaries to convert label data to morphology
-        spot_diameter
-            same diameter used for grid
-        ppm_in 
-            pixels per micron for input image
-        ppm_out 
-            used to scale xy grid positions to original image
+    print(f'Generating grid with spot size - {spot_diameter}, with resolution of - {ppm_in} ppm')
+    
+    positions = generate_hires_grid(im, spot_diameter, ppm_in).T  # Transpose for correct orientation
+    radius = spot_diameter // 4
+    kernel = create_disk_kernel(radius, (2*radius + 1, 2*radius + 1))
 
-    """
-    print('generating grid with spot size - '+str(spot_diameter)+', with resolution of - '+str(ppm_in)+' ppm')
-    positions = generate_hires_grid(im,spot_diameter,ppm_in)
-    positions = positions.astype('float32')
-    dim = [im.shape[0],im.shape[1]]
-    # transform tissue annotation images to original size
+    df = pd.DataFrame(positions, columns=['x', 'y'])
+    df['index'] = df.index
 
-    radius = spot_diameter/4 # measure the annotation from the center of the spot 
-    df = pd.DataFrame(
-        np.vstack((np.array(range(len(positions.T[:,0]))),positions.T[:,0],
-                   positions.T[:,1])).T,
-        columns=['index','x','y'])
-    for idx0,anno in enumerate(annotation_image_list):
-        anno_orig = skimage.transform.resize(anno,dim,preserve_range=True).astype('uint8') 
-        anno_dict = {}
-        number_dict = {}
-        name = f'{anno=}'.split('=')[0]
-        print(annotation_image_names[idx0])
-        for idx1,pointcell in tqdm(enumerate(positions.T)):
-            disk = skimage.draw.disk([int(pointcell[1]),int(pointcell[0])],radius,shape=anno_orig.shape)
-            anno_dict[idx1] = annotation_label_list[idx0][int(np.median(anno_orig[disk]))]
-            number_dict[idx1] = int(np.median(anno_orig[disk]))
-        df[annotation_image_names[idx0]] = anno_dict.values()
-        df[annotation_image_names[idx0]+'_number'] = number_dict.values()
-    # scale to original image coordinates
-    df['x'] = df['x']*ppm_out/ppm_in
-    df['y'] = df['y']*ppm_out/ppm_in
-    df['index'] = df['index'].astype(int)
-    df.set_index('index', drop=True, inplace=True)
+    for idx0, anno in enumerate(annotation_image_list):
+        anno_orig = skimage.transform.resize(anno, im.shape[:2], preserve_range=True).astype('uint8')
+        filtered_image = apply_median_filter(anno_orig, kernel)
+
+        median_values = [filtered_image[int(point[1]), int(point[0])] for point in positions]
+        anno_dict = {idx: annotation_label_list[idx0].get(val, "Unknown") for idx, val in enumerate(median_values)}
+        number_dict = {idx: val for idx, val in enumerate(median_values)}
+
+        df[annotation_image_names[idx0]] = list(anno_dict.values())
+        df[annotation_image_names[idx0] + '_number'] = list(number_dict.values())
+
+    df['x'] = df['x'] * ppm_out / ppm_in
+    df['y'] = df['y'] * ppm_out / ppm_in
+    df.set_index('index', inplace=True)
+
     return df
+
+
 
 
 def dist2cluster_fast(df, annotation, KNN=5, logscale=False):
