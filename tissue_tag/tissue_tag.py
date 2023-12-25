@@ -16,7 +16,7 @@ import os
 import holoviews as hv
 import holoviews.operation.datashader as hd
 import panel as pn
-from bokeh.models import FreehandDrawTool, PolyDrawTool, PolyEditTool,TabPanel, Tabs
+from bokeh.models import FreehandDrawTool, PolyDrawTool, PolyEditTool,TabPanel, Tabs, UndoTool 
 from bokeh.plotting import figure, show
 from functools import partial
 from io import BytesIO
@@ -28,6 +28,11 @@ from skimage import data, feature, future, segmentation
 from skimage.draw import polygon, disk
 from sklearn.ensemble import RandomForestClassifier
 from tqdm import tqdm
+import numpy as np
+import pandas as pd
+import skimage.transform
+import skimage.draw
+import scipy.ndimage
 hv.extension('bokeh')
 
 try:
@@ -300,6 +305,7 @@ def read_visium(
     AssertionError
         If 'use_resolution' is set to 'fullres' but 'fullres_path' is not specified.
     """
+    plt.figure(figsize=[12,12])
 
     spotsize = 55 #um spot size of a visium spot
 
@@ -903,13 +909,7 @@ def generate_hires_grid(
     
     return positions
 
-import numpy as np
-import pandas as pd
-import skimage.transform
-import skimage.draw
-import scipy.ndimage
 
-   
 
 def create_disk_kernel(radius, shape):
     rr, cc = skimage.draw.disk((radius, radius), radius, shape=shape)
@@ -1259,17 +1259,17 @@ def object_annotator(imarray, result, anno_dict, render_dict, alpha):
     return corrected_labels, object_dict
 
 
-def gene_labels(adata, df, training_labels, gene_markers, annodict, r):
+def gene_labels(path, df, labels, gene_markers, annodict, r,every_x_spots = 100):
     """
     Assign labels to training spots based on gene expression.
 
     Parameters
     ----------
-    adata : scanpy.AnnData
-        Annotated data matrix.
+    path : string
+        path to visium object (cellranger output folder)
     df : pandas.DataFrame
         DataFrame containing spot coordinates.
-    training_labels : numpy.ndarray
+    labels : numpy.ndarray
         Array for storing the training labels.
     gene_markers : dict
         Dictionary mapping markers to genes.
@@ -1277,6 +1277,9 @@ def gene_labels(adata, df, training_labels, gene_markers, annodict, r):
         Dictionary mapping markers to annotation names.
     r : float
         Radius of the spots.
+    every_x_spots : integer 
+        spacing of background labels to generate, higher number means less spots. Default is 100
+        
     Returns
     -------
     numpy.ndarray
@@ -1284,6 +1287,10 @@ def gene_labels(adata, df, training_labels, gene_markers, annodict, r):
     """
 
     import scanpy
+    adata = scanpy.read_visium(path,count_file='raw_feature_bc_matrix.h5')
+    adata = adata[df.index.intersection(adata.obs.index)]
+    coordinates = np.array(df.loc[:,['pxl_col','pxl_row']])
+    labels = background_labels(labels.shape[:2],coordinates.T,every_x_spots = 101,r=r) 
 
     for m in list(gene_markers.keys()):
         print(gene_markers[m])
@@ -1296,8 +1303,8 @@ def gene_labels(adata, df, training_labels, gene_markers, annodict, r):
             if sub == m:
                 back = idx
         for coor in df.loc[list_gene, ['pxl_row','pxl_col']].to_numpy():
-            training_labels[disk((coor[0], coor[1]), r)] = back + 1
-    return training_labels
+            labels[disk((coor[0], coor[1]), r)] = back + 1
+    return labels
 
 
 def background_labels(shape, coordinates, r, every_x_spots=10, label=1):
@@ -1333,10 +1340,11 @@ def background_labels(shape, coordinates, r, every_x_spots=10, label=1):
     grid = grid[::every_x_spots, :]
 
     for coor in grid:
-        training_labels[disk((coor[1], coor[0]), r)] = label
+        training_labels[disk((coor[1], coor[0]), r,shape=shape)] = label
+        
 
     for coor in coordinates.T:
-        training_labels[disk((coor[1], coor[0]), r * 4)] = 0
+        training_labels[disk((coor[1], coor[0]), r * 4,shape=shape)] = 0
 
     return training_labels
 
@@ -1856,3 +1864,32 @@ def bin_axis(ct_order, cutoff_values, df, axis_anno_name):
     df['manual_bin_' + axis_anno_name + '_int'] = df['manual_bin_' + axis_anno_name].cat.codes
 
     return df
+
+
+def plot_cont(data, x_col='centroid-1', y_col='centroid-0', color_col='L2_dist_annotation_tissue_Edge', 
+               cmap='jet', title='L2_dist_annotation_tissue_Edge', s=1, dpi=100, figsize=[10,10]):
+    plt.figure(dpi=dpi, figsize=figsize)
+
+    # Create an axes instance for the scatter plot
+    ax = plt.subplot(111)
+
+    # Create the scatterplot
+    scatter = sns.scatterplot(x=x_col, y=y_col, data=data, 
+                              c=data[color_col], cmap=cmap, s=s, 
+                              legend=False, ax=ax)  # Use the created axes
+
+    plt.grid(False)
+    plt.axis('equal')
+    plt.title(title)
+    for pos in ['right', 'top', 'bottom', 'left']:
+        ax.spines[pos].set_visible(False)
+
+    # Add colorbar
+    norm = plt.Normalize(data[color_col].min(), data[color_col].max())
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])
+    cbar = plt.colorbar(sm, ax=ax, label=title, aspect=30)  # Use the created axes for the colorbar
+    cbar.ax.set_position([0.85, 0.25, 0.05, 0.5])  # adjust the position as needed
+   
+
+    plt.show()
