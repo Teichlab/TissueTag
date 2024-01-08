@@ -1894,8 +1894,8 @@ def plot_cont(data, x_col='centroid-1', y_col='centroid-0', color_col='L2_dist_a
 
     plt.show()
 
-
     
+
 def annotator_fun(imarray, labels, anno_dict, plot_size=1024,invert_y=False,use_datashader=False,alpha=0.7):
     """
     Interactive annotation tool with line annotations using Panel tabs for toggling between morphology and annotation. this version also supports adding an external function
@@ -1941,76 +1941,79 @@ def annotator_fun(imarray, labels, anno_dict, plot_size=1024,invert_y=False,use_
             imarray_c = np.flip(imarray_c, 0)
 
         # Create new holoview images
-        anno = hv.RGB(annotation_c, bounds=(0, 0, annotation_c.shape[1], annotation_c.shape[0]))
+        im_1 = hv.RGB(imarray_c, bounds=(0, 0, imarray_c.shape[1], imarray_c.shape[0]))
         if use_datashader:
-            anno = hd.regrid(anno)
-        ds_anno = anno.options(aspect="equal", frame_height=int(plot_size), frame_width=int(plot_size))
+            im_1 = hd.regrid(im_1)
+        ds_im_1 = im_1.options(aspect="equal", frame_height=int(plot_size), frame_width=int(plot_size))
 
-        img = hv.RGB(imarray_c, bounds=(0, 0, imarray_c.shape[1], imarray_c.shape[0]))
+        anno_1 = hv.RGB(annotation_c, bounds=(0, 0, annotation_c.shape[1], annotation_c.shape[0]))
         if use_datashader:
-            img = hd.regrid(img)
-        ds_img = img.options(aspect="equal", frame_height=int(plot_size), frame_width=int(plot_size))
-        return ds_anno, ds_img
+            anno_1 = hd.regrid(anno_1)
+        ds_anno_1 = anno_1.options(aspect="equal", frame_height=int(plot_size), frame_width=int(plot_size))
+        return ds_im_1, ds_anno_1
     
-    def create_tools(anno_tab_plot_list, img_tab_plot_list):
-        render_dict = {}
-        img_render_dict = {}
-        path_dict = {}
-        img_path_dict = {}
+    def create_tools(im_tab_plot_list, anno_tab_plot_list):
+        im_render_dict = {}
+        anno_render_dict = {}
+        im_path_dict = {}
+        anno_path_dict = {}
         for key in anno_dict.keys():
-            path_dict[key] = hv.Path([]).opts(color=anno_dict[key], line_width=5, line_alpha=0.4)
-            render_dict[key] = CustomFreehandDraw(source=path_dict[key], num_objects=200, tooltip=key,
+            im_path_dict[key] = hv.Path([]).opts(color=anno_dict[key], line_width=5, line_alpha=0.4)
+            im_render_dict[key] = CustomFreehandDraw(source=im_path_dict[key], num_objects=200, tooltip=key,
                                                 icon_colour=anno_dict[key])
 
-            img_path_dict[key] = hv.Path([]).opts(color=anno_dict[key], line_width=5, line_alpha=0.4)
-            img_render_dict[key] = CustomFreehandDraw(source=img_path_dict[key], num_objects=200, tooltip=key,
+            anno_path_dict[key] = hv.Path([]).opts(color=anno_dict[key], line_width=5, line_alpha=0.4)
+            anno_render_dict[key] = CustomFreehandDraw(source=anno_path_dict[key], num_objects=200, tooltip=key,
                                                 icon_colour=anno_dict[key])
 
-            SynchronisedFreehandDrawLink(path_dict[key], img_path_dict[key])
-            anno_tab_plot_list.append(path_dict[key])
-            img_tab_plot_list.append(img_path_dict[key])
-        return render_dict, path_dict, img_path_dict, img_render_dict
+            SynchronisedFreehandDrawLink(im_path_dict[key], anno_path_dict[key])
+            im_tab_plot_list.append(im_path_dict[key])
+            anno_tab_plot_list.append(anno_path_dict[key])
+        return im_render_dict, im_path_dict, anno_path_dict, anno_render_dict
     
     def update(x):
         labels = labels_l[0]
         anno_dict = anno_dict_l[0]
         render_dict = render_dict_l[0]
+        loader.visible = True
         
         labels = update_annotator(imarray, labels, anno_dict, render_dict, alpha=0.5,plot=False, copy=False)
-        ds_anno, ds_img = create_images(labels, imarray)
-        anno_tab_plot_list = [ds_anno]
-        img_tab_plot_list = [ds_img]
-        render_dict, path_dict, img_path_dict, img_render_dict = create_tools(anno_tab_plot_list,img_tab_plot_list)
+        ds_im_1, ds_anno_1 = create_images(labels, imarray)
+        im_tab_plot_list = [ds_im_1]
+        anno_tab_plot_list = [ds_anno_1]
+        render_dict, path_dict, img_path_dict, img_render_dict = create_tools(im_tab_plot_list,anno_tab_plot_list)
 
         
-        pa.object = hd.Overlay(anno_tab_plot_list).collate()
-        pa1.object = hd.Overlay(img_tab_plot_list).collate()
-        pt = pn.Tabs(("Annotation", pa),("Image", pa1),dynamic=False)
+        pa.object = hd.Overlay(im_tab_plot_list).collate()
+        pa1.object = hd.Overlay(anno_tab_plot_list).collate()
+        pt = pn.Tabs(("Image", pa),("Annotation", pa1),dynamic=False)
         p[0].object = pt
         #pt[1][1].object = pn.panel(hd.Overlay(img_tab_plot_list).collate())
         labels_l[0] = labels
         anno_dict_l[0] = anno_dict
         render_dict_l[0] = render_dict
         
+        loader.visible = False
         # Create the tabbed view
 
     labels_l = labels
-    ds_anno, ds_img = create_images(labels_l[0], imarray)
-    print("Changes")
-    anno_tab_plot_list = [ds_anno]
-    img_tab_plot_list = [ds_img]
-    render_dict, path_dict, img_path_dict, img_render_dict = create_tools(anno_tab_plot_list,img_tab_plot_list)
+    ds_im_1, ds_anno_1 = create_images(labels_l[0], imarray)
+    im_tab_plot_list = [ds_im_1]
+    anno_tab_plot_list = [ds_anno_1]
+    render_dict, path_dict, img_path_dict, img_render_dict = create_tools(im_tab_plot_list,anno_tab_plot_list)
     
     
     anno_dict_l = [anno_dict.copy()]
     render_dict_l = [render_dict.copy()]
 
-    pa =  pn.panel(hd.Overlay(anno_tab_plot_list).collate())
-    pa1 = pn.panel(hd.Overlay(img_tab_plot_list).collate())
-    pt = pn.Tabs(("Annotation", pa),("Image", pa1),dynamic=False)
-    print("Dynamic")
+    pa =  pn.panel(hd.Overlay(im_tab_plot_list).collate())
+    pa1 = pn.panel(hd.Overlay(anno_tab_plot_list).collate())
+    pt = pn.Tabs(("Image", pa),("Annotation", pa1),dynamic=False)
 
-    button = pn.widgets.Button(name="Apply annotator")
+    button = pn.widgets.Button(name="Update annotations")
     button.on_click(callback=update)
-    p = pn.Column(button, pt)#.servable() 
+    loader = pn.indicators.LoadingSpinner(value=True, size=20, name="Updating annotation...")
+    loader.visible = False
+    p = pn.Column(pn.Row(button, loader), pt)#.servable() 
     return p, render_dict#, pt
+
