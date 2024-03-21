@@ -10,10 +10,7 @@ TissueTag consists of two major components:
 
 *Note: A labeled image is an integer array where each pixel value (0,1,2,...) corresponds to an annotated structure.*
 
-## Tools 
-1) **Annotator**: Enables interactive annotation of predefined anatomical objects via convex shape filling.
-2) **Scribbler**: Designed for broadly labeling an image. It uses these labels to train a pixel classifier on the remainder of the image. (will be reomved in next versions)
-3) **Poly Annotator**: Suited for labeling discrete, repetitive objects (e.g., lobules or separate compartments), this tool creates polygons around objects and labels them based on the object count (e.g., lobule_0, lobule_1). (will be reomved in next versions)
+**Annotator**: Enables interactive annotation of predefined anatomical objects via convex shape filling while toggeling between reference and annotation image.
 
 We envision this tool as a foundational starting point as its simplicity and transparent nature allows for many potential enhancements, additions and spinoffs. So contributions and suggestions are highly appreciated!
 
