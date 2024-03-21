@@ -5,8 +5,9 @@
 # TissueTag: Jupyter Image Annotator
 
 TissueTag consists of two major components:
-1) **Jupyter-based image annotation tool**: Utilizing the Bokeh Python library (http://www.bokeh.pydata.org) empowered by Datashader (https://datashader.org/index.html) and holoviews (https://holoviews.org/index.html) for pyramidal image rendering. This tool offers a streamlined annotation solution with subpixel resolution for quick interactive annotation of various image types (e.g., brightfield, fluorescence). TissueTag produces labeled images (e.g., cortex, medulla) and logs all tissue labels, and annotation resolution and  colors for reproducibility.
-2) **Mapping annotations to data**: This component facilitates the migration of annotations to spots/cells based on overlap with annotated structures. It also logs the minimum Euclidean distance of each spot/cell to the discrete annotations, offering continuous annotation. This contains spatial neighborhood information, adding to the x-y coordinates of a given spot or cell, and is foundational for calculating a morphological axis (OrganAxis, see tutorials).
+1) **Jupyter-based image annotation tool**:Utilising the Bokeh Python library (http://www.bokeh.pydata.org) empowered by Datashader (https://datashader.org/index.html) and holoviews (https://holoviews.org/index.html) for pyramidal image rendering. This tool offers a streamlined annotation solution with subpixel resolution for quick interactive annotation of various image types (e.g., brightfield, fluorescence). TissueTag produces labelled images (e.g., cortex, medulla) and logs all tissue labels, and annotation resolution and colours for reproducibility.
+
+2) **Mapping annotations to data**: This component facilitates the migration of annotations to spots/cells based on overlap with annotated structures. It also logs the minimum Euclidean distance of each spot/cell to the discrete annotations, offering continuous annotation. This contains spatial neighbourhood information, adding to the x-y coordinates of a given spot or cell, and is foundational for calculating a morphological axis (OrganAxis, see tutorials).
 
 *Note: A labeled image is an integer array where each pixel value (0,1,2,...) corresponds to an annotated structure.*
 
