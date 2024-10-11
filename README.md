@@ -1,3 +1,5 @@
+
+
 <p align="center">
 	<img src="https://github.com/nadavyayon/TissueTag/blob/main/tissueTag_logo.png" width="300">
 </p>
@@ -22,6 +24,10 @@ We envision this tool as a foundational starting point as its simplicity and tra
 ```
 pip install tissue-tag
 ```
+## Note
+At the moment, we are experiencing compatibility issues with `Panel`, which we expect to be resolved soon. In the meantime, we recommend using version `panel==1.3.8`.
+
+
 ## How to use 
 We supply some examples of usage for TissueTag annotations: 
 1) visium spatial transcriptomics -  
