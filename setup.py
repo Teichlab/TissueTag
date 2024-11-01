@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name='tissue-tag',
-    version='0.2.0',
+    version='0.2.1',
     packages=find_packages(),
     install_requires=[
         'opencv-python',
@@ -20,10 +20,10 @@ setup(
         'scikit-learn',
         'holoviews',
         'datashader',
-        'panel',
+        'panel==1.3.8',
         'jupyterlab'
     ],
-    author='Oren Amsalem, Nadav Yayon',
+    author='Oren Amsalem, Nadav Yayon, Andrian Yang',
     author_email='nadav.yayon@mail.huji.ac.il',
     description="Tissue Tag: jupyter image annotator",
     long_description=long_description,

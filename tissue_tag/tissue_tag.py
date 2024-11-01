@@ -831,7 +831,6 @@ def load_annotation(folder, file_name, load_colors=False):
         return im, anno_order, ppm['ppm']
 
 
-
 def simonson_vHE(dapi_image, eosin_image):
     """
     Create virtual H&E images using DAPI and eosin images.
@@ -878,38 +877,41 @@ def simonson_vHE(dapi_image, eosin_image):
     print(dapi_image.shape)
     return createVirtualHE(dapi_image, eosin_image, k1, k2, background, beta_DAPI, beta_eosin)
 
-def generate_hires_grid(
-    im,
-    spot_diameter,
-    pixels_per_micron,
-):
-    """
-        creates an hexagonal grid of a specified size and density 
-        
-        Parameters
-        ----------     
-        im            
-            image to fit the gri on (mostly for dimentions)
-        spot_diameter  
-            in microns - determines the spot size and thus the density of the grid
-        pixels_per_micron  
-            image resolution
 
+def generate_hires_grid(im, spot_diameter, pixels_per_micron):
     """
-    helper = spot_diameter * pixels_per_micron
-    X1 = np.linspace(helper, im.shape[0] - helper, round(im.shape[0] / helper))
-    Y1 = np.linspace(helper, im.shape[1] - 2 * helper, round(im.shape[1] / (2 * helper)))
-    X2 = X1 + spot_diameter * pixels_per_micron / 2
-    Y2 = Y1 + helper
-    Gx1, Gy1 = np.meshgrid(X1, Y1)
-    Gx2, Gy2 = np.meshgrid(X2, Y2)
-    positions1 = np.vstack([Gy1.ravel(), Gx1.ravel()])
-    positions2 = np.vstack([Gy2.ravel(), Gx2.ravel()])
-    positions = np.hstack([positions1, positions2])
+    Creates a hexagonal grid of a specified size and density.
     
-    return positions
-
-
+    Parameters
+    ----------
+    im : array-like
+        Image to fit the grid on (mostly for dimensions).
+    spot_diameter : float
+        The spot size in microns, which determines the grid density.
+    pixels_per_micron : float
+        The resolution of the image in pixels per micron.
+    """
+    # Step size in pixels for spot_diameter microns
+    step_size_in_pixels = spot_diameter * pixels_per_micron
+    
+    # Generate X-axis and Y-axis grid points
+    X1 = np.arange(step_size_in_pixels, im.shape[1] - 2 * step_size_in_pixels, step_size_in_pixels * np.sqrt(3)/2)
+    Y1 = np.arange(step_size_in_pixels, im.shape[0] - step_size_in_pixels, step_size_in_pixels)
+    
+    # Shift every other column by half a step size (for staggered pattern in columns)
+    positions = []
+    for i, x in enumerate(X1):
+        if i % 2 == 0:  # Even columns (no shift)
+            Y_shifted = Y1
+        else:  # Odd columns (shifted by half)
+            Y_shifted = Y1 + step_size_in_pixels / 2
+        
+        # Combine X and Y positions, and check for boundary conditions
+        for y in Y_shifted:
+            if 0 <= x < im.shape[1] and 0 <= y < im.shape[0]:
+                positions.append([x, y])
+    
+    return np.array(positions).T 
 
 def create_disk_kernel(radius, shape):
     rr, cc = skimage.draw.disk((radius, radius), radius, shape=shape)
@@ -1678,72 +1680,70 @@ def annotate_l2(df_target, df_grid, annotation='annotations_level_0', KNN=10, ma
 
     return adata_vis
 
+from scipy.spatial import cKDTree
 
-
-def map_annotations_to_target(df_source, df_target,ppm_target,  ppm_source=1, plot=True, how='nearest', max_distance=50):
+def map_annotations_to_target(df_source, df_target, ppm_target, ppm_source=1, plot=True, max_distance=50):
     """
-    map annotations to any form of of csv where you have x y cooodinates spot df (cells or spots) data with high-resolution grid.
-    note! - xy coordinates must be named 'x' and 'y'
+    Map annotations from a source to a target DataFrame based on nearest neighbor matching within a maximum distance.
 
     Parameters
     ----------
     df_source : pandas.DataFrame
-        Dataframe with grid data.
+        DataFrame with grid data and annotations.
     df_target : pandas.DataFrame
-        Dataframe with target data.
+        DataFrame with target data.
     ppm_source : float 
         Pixels per micron of source data.
     ppm_target : float 
         Pixels per micron of target data.
     plot : bool, optional
-        If true, plots the coordinates of the grid space and the spot space to make sure they are aligned. Default is True.
-    how : string, optinal
-        This determines how the association between the 2 grids is made from the scipy.interpolate.griddata function. Default is 'nearest'
-        if the data is categorial then only the 'nearest' would work but if interpolation is needed one should supbset to only numeric data.
+        If True, plots the coordinates of the grid space and the spot space to verify alignment. Default is True.
     max_distance : int
-        Factor to calculate maximal distance where points are not migrated. The final max_distance used will be max_distance * ppm_target.
+        Maximum allowable distance for matching points. Final max_distance used will be max_distance * ppm_target.
    
     Returns
     -------
     df_target : pandas.DataFrame
-        Annotated dataframe with additional annotations from the source data.
+        Annotated DataFrame with additional annotations from the source data.
     """
-    from scipy.interpolate import griddata
-    from scipy.spatial import cKDTree
 
+    # Adjust coordinate scaling
+    a = np.vstack([df_source['x'] / ppm_source, df_source['y'] / ppm_source]).T
+    b = np.vstack([df_target['x'] / ppm_target, df_target['y'] / ppm_target]).T
     
-    # generate matched coordinate space 
-    a = np.vstack([df_source['x']/ppm_source, df_source['y']/ppm_source])
-    b = np.vstack([df_target['x']/ppm_target, df_target['y']/ppm_target])
-    
+    # Plot the coordinate spaces if requested
     if plot:
-        print('Make sure the coordinate systems are aligned, e.g., axes are not flipped and the resolution is matched.') 
         plt.figure(dpi=100, figsize=[10, 10])
-        plt.title('Target space')
-        plt.plot(b[0], b[1], '.', markersize=1)
+        plt.scatter(b[:, 0], b[:, 1], s=1, label='Target Space')
+        plt.title('Target Space')
+        plt.legend()
         plt.show()
         
         plt.figure(dpi=100, figsize=[10, 10])
-        plt.plot(a[0], a[1], '.', markersize=1)
-        plt.title('source space')
+        plt.scatter(a[:, 0], a[:, 1], s=1, label='Source Space')
+        plt.title('Source Space')
+        plt.legend()
         plt.show()
 
-    annotations = df_source.columns[~df_source.columns.isin(['x', 'y'])] # extract annotation categories
+    # Find nearest neighbors and distances only once
+    tree = cKDTree(a)
+    distances, indices = tree.query(b, distance_upper_bound=max_distance * ppm_target)
     
+    # Filter valid indices based on distance and within-bounds check
+    valid_mask = (indices < len(df_source)) & (distances < max_distance * ppm_target)
+    
+    # For each annotation, assign the value from the nearest neighbor in the source data
+    annotations = df_source.columns.difference(['x', 'y'])
     for k in annotations:
-        print('Migrating source annotation - ' + k + ' to target space.')
-        
-        # Interpolation
-        df_target[k] = griddata(points=a.T, values=df_source[k], xi=b.T, method=how)
-        
-        # Create KDTree
-        tree = cKDTree(a.T)
-        
-        # Query tree for nearest distance
-        distances, _ = tree.query(b.T, distance_upper_bound=max_distance)
-        
-        # Mask df_spots where the distance is too high
-        df_target.loc[distances == np.inf, k] = None
+        # Initialize with NaN or None where indices are out of bounds
+        if pd.api.types.is_numeric_dtype(df_source[k]):
+            df_target[k] = np.nan
+        else:
+            df_target[k] = None
+
+        # Assign values where distance criteria are met and indices are valid
+        valid_indices = indices[valid_mask]
+        df_target.loc[valid_mask, k] = df_source.iloc[valid_indices][k].values
 
     return df_target
 
