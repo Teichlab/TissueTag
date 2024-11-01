@@ -33,7 +33,7 @@ We supply two examples of usage for TissueTag annotations:
 
 2) IBEX single cell multiplex protein imaging - 
    in this example we annotate a postnatal thymus image by calling the major anatomical regions and training a random forest classifier for initial prediction followed by manual corrections
-   [IBEX annotation tutorial](https://github.com/nadavyayon/TissueTag/blob/main/Tutorials/demo_flourscent_annotation_git.ipynb). Next, we show how one can migrate these annotations to segmented cells and calulcate a morphological axis (OrganAxis) [IBEX mapping annotations tutorial](https://github.com/nadavyayon/TissueTag/blob/main/Tutorials/demo_flourscent_map_annotations_to_cells.ipynb).
+   [IBEX annotation tutorial](https://github.com/nadavyayon/TissueTag/blob/main/Tutorials/demo_flourscent_map_annotations_to_cells.ipynb). Next, we show how one can migrate these annotations to segmented cells and calulcate a morphological axis (OrganAxis) [IBEX mapping annotations tutorial](https://github.com/nadavyayon/TissueTag/blob/main/Tutorials/demo_flourscent_map_annotations_to_cells.ipynb).
    
 ## Usage on a cluster vs local machine 
 Bokeh interactive plotting required communication between the notebook instance and the browser. 
