@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name='tissue-tag',
-    version='0.2.1',
+    version='0.2.2',
     packages=find_packages(),
     install_requires=[
         'opencv-python',

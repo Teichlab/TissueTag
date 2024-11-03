@@ -878,7 +878,7 @@ def simonson_vHE(dapi_image, eosin_image):
     return createVirtualHE(dapi_image, eosin_image, k1, k2, background, beta_DAPI, beta_eosin)
 
 
-def generate_hires_grid(im, spot_diameter, pixels_per_micron):
+def generate_hires_grid(im, spot_to_spot, pixels_per_micron):
     """
     Creates a hexagonal grid of a specified size and density.
     
@@ -886,13 +886,13 @@ def generate_hires_grid(im, spot_diameter, pixels_per_micron):
     ----------
     im : array-like
         Image to fit the grid on (mostly for dimensions).
-    spot_diameter : float
-        The spot size in microns, which determines the grid density.
+    spot_to_spot : float
+        determines the grid density.
     pixels_per_micron : float
         The resolution of the image in pixels per micron.
     """
-    # Step size in pixels for spot_diameter microns
-    step_size_in_pixels = spot_diameter * pixels_per_micron
+    # Step size in pixels for spot_to_spot microns
+    step_size_in_pixels = spot_to_spot * pixels_per_micron
     
     # Generate X-axis and Y-axis grid points
     X1 = np.arange(step_size_in_pixels, im.shape[1] - 2 * step_size_in_pixels, step_size_in_pixels * np.sqrt(3)/2)
@@ -927,15 +927,16 @@ def grid_anno(
     annotation_image_list,
     annotation_image_names,
     annotation_label_list,
-    spot_diameter,
+    spot_to_spot,
     ppm_in,
     ppm_out,
 ):
-    print(f'Generating grid with spot size - {spot_diameter}, with resolution of - {ppm_in} ppm')
+    print(f'Generating grid with spot-to-spot distance - {spot_to_spot}, with annotation resolution of - {ppm_in} ppm')
     
-    positions = generate_hires_grid(im, spot_diameter, ppm_in).T  # Transpose for correct orientation
-    radius = spot_diameter // 4
-    kernel = create_disk_kernel(radius, (2*radius + 1, 2*radius + 1))
+    positions = generate_hires_grid(im, spot_to_spot, ppm_in).T  # Transpose for correct orientation
+    
+    radius = int(round((spot_to_spot / 2 ) * ppm_in)-1)
+    kernel = create_disk_kernel(radius, (2 * radius + 1, 2 * radius + 1))
 
     df = pd.DataFrame(positions, columns=['x', 'y'])
     df['index'] = df.index
@@ -956,8 +957,6 @@ def grid_anno(
     df.set_index('index', inplace=True)
 
     return df
-
-
 
 
 def dist2cluster_fast(df, annotation, KNN=5, logscale=False):
@@ -992,7 +991,12 @@ def dist2cluster_fast(df, annotation, KNN=5, logscale=False):
 
     return Dist2ClusterAll
 
-    
+import numpy as np
+import pandas as pd
+import networkx as nx
+from scipy.spatial import cKDTree
+
+
 def anno_to_cells(df_cells, x_col, y_col, df_grid, annotation='annotations', plot=True):
     """
     Maps tissue annotations to segmented cells by nearest neighbors.
@@ -1496,7 +1500,7 @@ def anno_transfer(df_spots, df_grid, ppm_spots, ppm_grid, plot=True, how='neares
 
 
 
-def anno_to_grid(folder, file_name, spot_diameter, load_colors=False,null_number=1):
+def anno_to_grid(folder, file_name, spot_to_spot, load_colors=False,null_number=1):
     """
     Load annotations and transform them into a spot grid, output is always in micron space to make sure distance calculations are correct,
     or in other words ppm=1.
@@ -1507,8 +1511,8 @@ def anno_to_grid(folder, file_name, spot_diameter, load_colors=False,null_number
         Folder path for annotations.
     file_name : str
         Name for tif image and pickle without extensions.
-    spot_diameter : float
-        The diameter used for grid.
+    spot_to_spot : float
+        The distance in microns used for grid spacing.
     load_colors : bool, optional
         If True, get original colors used for annotations. Default is False.
     null_numer : int
@@ -1527,7 +1531,7 @@ def anno_to_grid(folder, file_name, spot_diameter, load_colors=False,null_number
         [im],
         [file_name],
         [anno_order],
-        spot_diameter,
+        spot_to_spot,
         ppm,
         1,
     )
@@ -1535,7 +1539,7 @@ def anno_to_grid(folder, file_name, spot_diameter, load_colors=False,null_number
     return df
 
 
-def map_annotations_to_visium(vis_path, df_grid, ppm_grid, spot_diameter, plot=True, how='nearest', max_distance_factor=50, use_resolution='hires', res_in_ppm=1, count_file='raw_feature_bc_matrix.h5'):
+def map_annotations_to_visium(vis_path, df_grid, ppm_grid, spot_to_spot, plot=True, how='nearest', max_distance_factor=50, use_resolution='hires', res_in_ppm=1, count_file='raw_feature_bc_matrix.h5'):
     """
     Processes Visium data with high-resolution grid.
 
@@ -1547,8 +1551,8 @@ def map_annotations_to_visium(vis_path, df_grid, ppm_grid, spot_diameter, plot=T
         Dataframe with grid data.
     ppm_grid : float 
         Pixels per micron of grid.
-    spot_diameter : float
-        Diameter of the spots.
+    spot_to_spot : float
+        Spacing of the spots.
     plot : bool, optional
         If true, plots the coordinates of the grid space and the spot space to make sure they are aligned. Default is True.
     how : string, optinal
@@ -1589,7 +1593,7 @@ def map_annotations_to_visium(vis_path, df_grid, ppm_grid, spot_diameter, plot=T
     # Add to uns
     adata_vis.uns['hires_grid'] = df_grid
     adata_vis.uns['hires_grid_ppm'] = ppm_grid
-    adata_vis.uns['hires_grid_diam'] = spot_diameter
+    adata_vis.uns['hires_grid_diam'] = spot_to_spot
     adata_vis.uns['visium_ppm'] = ppm_visium
 
 
@@ -1597,7 +1601,7 @@ def map_annotations_to_visium(vis_path, df_grid, ppm_grid, spot_diameter, plot=T
     return adata_vis
 
 
-def load_and_combine_annotations(folder, file_names, spot_diameter, load_colors=True):
+def load_and_combine_annotations(folder, file_names, spot_to_spot, load_colors=True):
     """
     Load tissue annotations from multiple files and combine them into a single DataFrame.
 
@@ -1607,8 +1611,8 @@ def load_and_combine_annotations(folder, file_names, spot_diameter, load_colors=
         Folder path where the annotation files are stored.
     file_names : list of str
         List of names of the annotation files.
-    spot_diameter : int
-        Diameter of the spots.
+    spot_to_spot : int
+        spacing of the spots.
     load_colors : bool, optional
         Whether to load colors. Default is True.
 
@@ -1623,7 +1627,7 @@ def load_and_combine_annotations(folder, file_names, spot_diameter, load_colors=
     ppm_grid = None
 
     for file_name in file_names:
-        df, ppm_grid = anno_to_grid(folder=folder, file_name=file_name, spot_diameter=spot_diameter, load_colors=load_colors)
+        df, ppm_grid = anno_to_grid(folder=folder, file_name=file_name, spot_to_spot=spot_to_spot, load_colors=load_colors)
         df_list.append(df)
 
     # Concatenate all dataframes
@@ -1711,17 +1715,14 @@ def map_annotations_to_target(df_source, df_target, ppm_target, ppm_source=1, pl
     a = np.vstack([df_source['x'] / ppm_source, df_source['y'] / ppm_source]).T
     b = np.vstack([df_target['x'] / ppm_target, df_target['y'] / ppm_target]).T
     
-    # Plot the coordinate spaces if requested
+    # Plot the coordinate spaces if requested, overlaying them in a single plot with different colors and a legend
     if plot:
         plt.figure(dpi=100, figsize=[10, 10])
-        plt.scatter(b[:, 0], b[:, 1], s=1, label='Target Space')
-        plt.title('Target Space')
-        plt.legend()
-        plt.show()
-        
-        plt.figure(dpi=100, figsize=[10, 10])
-        plt.scatter(a[:, 0], a[:, 1], s=1, label='Source Space')
-        plt.title('Source Space')
+        plt.scatter(a[:, 0], a[:, 1], s=5, color='blue', label='Source Space', alpha=0.5)
+        plt.scatter(b[:, 0], b[:, 1], s=5, color='orange', label='Target Space', alpha=0.5)
+        plt.title('Source and Target Space Coordinates')
+        plt.xlabel('X Coordinate')
+        plt.ylabel('Y Coordinate')
         plt.legend()
         plt.show()
 
