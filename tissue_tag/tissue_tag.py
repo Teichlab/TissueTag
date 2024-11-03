@@ -931,7 +931,7 @@ def grid_anno(
     ppm_in,
     ppm_out,
 ):
-    print(f'Generating grid with spacing - {spot_diameter}, from annotation resolution of - {ppm_in} ppm')
+    print(f'Generating grid with spacing - {spot_to_spot}, from annotation resolution of - {ppm_in} ppm')
     
     positions = generate_hires_grid(im, spot_to_spot, ppm_in).T  # Transpose for correct orientation
     
