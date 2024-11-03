@@ -24,7 +24,7 @@ setup(
         'jupyterlab'
     ],
     author='Oren Amsalem, Nadav Yayon, Andrian Yang',
-    author_email='nadav.yayon@mail.huji.ac.il',
+    author_email='ny1@sanger.ac.uk',
     description="Tissue Tag: jupyter image annotator",
     long_description=long_description,
     long_description_content_type="text/markdown",
