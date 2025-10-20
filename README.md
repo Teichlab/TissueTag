@@ -1,4 +1,4 @@
-# Note! - a new version of TissueTag is actively developed here - https://github.com/DRPTSB/TissueTag2/tree/main 
+# Note! - a new version of TissueTag is actively developed here - [TissueTag2](https://github.com/DRPTSB/TissueTag2/tree/main )
 # This branch will be eventually archived at a later stage. 
 
 <p align="center">
