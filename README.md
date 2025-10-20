@@ -41,6 +41,6 @@ We have tested the functionality of TissueTag with jupyter lab or jupyter notebo
 In addition SSH tunnelling is not supported as well but if you are accessing the notebook from outside your institute, VPN access should work fine. 
 
 ## How to cite:
-please cite the following preprint - https://www.biorxiv.org/content/10.1101/2023.10.25.562925v1
+please cite the following manuscript - https://www.nature.com/articles/s41586-024-07944-6
 
 
